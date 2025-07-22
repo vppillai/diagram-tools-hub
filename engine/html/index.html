@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagram Tools Hub</title>
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 90%;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .tool-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .tool-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .tool-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+        }
+
+        .tool-card h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .tool-card p {
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+
+        .tool-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #fff;
+            color: #2a5298;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #fff;
+            border: 2px solid #fff;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 3rem;
+        }
+
+        .status-grid {
+            display: inline-grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4ade80;
+        }
+
+        .status-indicator.loading {
+            background: #fbbf24;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .tool-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Diagram Tools Hub</h1>
+            <p>Your unified interface for locallyhosted professional diagramming and drawing tools</p>
+        </div>
+
+        <div class="tools-grid">
+            <div class="tool-card">
+                <div class="tool-icon">📊</div>
+                <h2>Draw.io</h2>
+                <p>Professional diagramming tool for flowcharts, network diagrams, UML, and more.</p>
+                <div class="tool-buttons">
+                    <a href="/drawio/" class="btn btn-primary" onclick="launchTool('drawio')">Launch</a>
+                    <a href="/drawio/" target="_blank" class="btn btn-secondary">New Tab</a>
+                </div>
+            </div>
+
+            <div class="tool-card">
+                <div class="tool-icon">✏️</div>
+                <h2>Excalidraw</h2>
+                <p>Virtual whiteboard for sketching hand-drawn like diagrams and illustrations.</p>
+                <div class="tool-buttons">
+                    <a href="/excalidraw/" class="btn btn-primary" onclick="launchTool('excalidraw')">Launch</a>
+                    <a href="/excalidraw/" target="_blank" class="btn btn-secondary">New Tab</a>
+                </div>
+            </div>
+
+            <div class="tool-card">
+                <div class="tool-icon">🎨</div>
+                <h2>tldraw</h2>
+                <p>Collaborative drawing tool with a focus on simplicity and real-time collaboration.</p>
+                <div class="tool-buttons">
+                    <a href="/tldraw/" class="btn btn-primary" onclick="launchTool('tldraw')">Launch</a>
+                    <a href="/tldraw/" target="_blank" class="btn btn-secondary">New Tab</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="status">
+            <h3>Service Status</h3>
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="status-indicator" id="drawio-status"></span>
+                    <span>Draw.io</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-indicator" id="excalidraw-status"></span>
+                    <span>Excalidraw</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-indicator" id="tldraw-status"></span>
+                    <span>tldraw</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Track tool launches
+        function launchTool(tool) {
+            console.log(`Launching ${tool}...`);
+            // You can add analytics or other tracking here
+        }
+
+        // Check service status
+        async function checkStatus() {
+            const services = ['drawio', 'excalidraw', 'tldraw'];
+
+            for (const service of services) {
+                const indicator = document.getElementById(`${service}-status`);
+                indicator.className = 'status-indicator loading';
+
+                try {
+                    const response = await fetch(`/${service}/`, { method: 'HEAD' });
+                    indicator.className = 'status-indicator';
+                } catch (error) {
+                    indicator.style.background = '#ef4444';
+                }
+            }
+        }
+
+        // Check status on load and every 30 seconds
+        checkStatus();
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+
+</html>

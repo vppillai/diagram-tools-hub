@@ -1,0 +1,47 @@
+services:
+  # Engine server - Nginx with custom landing page
+  engine:
+    image: nginx:alpine
+    container_name: diagram-engine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./engine/html:/usr/share/nginx/html:ro
+    depends_on:
+      - drawio
+      - excalidraw
+      - tldraw
+    restart: unless-stopped
+
+  # Draw.io container
+  drawio:
+    image: jgraph/drawio
+    container_name: drawio-app
+    ports:
+      - "8081:8080"
+    environment:
+      - DRAWIO_BASE_URL=/drawio
+    restart: unless-stopped
+
+  # Excalidraw container
+  excalidraw:
+    image: excalidraw/excalidraw:latest
+    container_name: excalidraw-app
+    ports:
+      - "8082:80"
+    restart: unless-stopped
+
+  # TLDraw container - using a custom build since there's no official image
+  tldraw:
+    build:
+      context: ./tldraw
+      dockerfile: Dockerfile
+    container_name: tldraw-app
+    ports:
+      - "8083:3000"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: diagram-tools-network 
