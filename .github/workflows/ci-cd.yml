@@ -63,6 +63,7 @@ jobs:
           sleep 5
           if ! docker ps | grep -q tldraw-test; then
             echo "❌ TLDraw container failed to start"
+            docker logs tldraw-test 2>/dev/null || echo "No logs available"
             exit 1
           fi
           docker stop tldraw-test
@@ -74,8 +75,24 @@ jobs:
           sleep 5
           if ! docker ps | grep -q engine-test; then
             echo "❌ Engine container failed to start"
+            echo "Container logs:"
+            docker logs engine-test 2>/dev/null || echo "No logs available"
+            echo "Container inspect:"
+            docker inspect engine-test 2>/dev/null || echo "Container not found"
             exit 1
           fi
+          
+          # Test if nginx is responding
+          echo "Testing Engine container health..."
+          sleep 2
+          if curl -f http://localhost:8080/health >/dev/null 2>&1; then
+            echo "✅ Engine container health check passed"
+          else
+            echo "⚠️ Engine container started but health check failed"
+            echo "Container logs:"
+            docker logs engine-test
+          fi
+          
           docker stop engine-test
           echo "✅ Engine container started successfully"
           
