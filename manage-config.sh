@@ -960,6 +960,7 @@ if ! sudo docker info >/dev/null 2>&1; then
     exit 1
 fi
 
+
 # Service management functions
 install_service() {
     local service_file="drawapp.service"
