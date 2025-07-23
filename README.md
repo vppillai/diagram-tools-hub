@@ -96,9 +96,17 @@ Switch to HTTP-only (no SSL):
 
 ### Environment Variables
 
-Create a `.env` file to customize settings:
+The `.env` file allows you to customize ports and other settings:
 
 ```bash
+# External Port Configuration
+HTTP_PORT=8080              # HTTP port (when HTTPS is disabled)
+HTTPS_PORT=443              # HTTPS port
+HTTP_REDIRECT_PORT=80       # HTTP redirect port (when HTTPS is enabled)
+
+# SSL Configuration
+SSL_DOMAIN=localhost        # Domain for SSL certificate generation
+
 # TLDraw settings
 TLDRAW_DEBUG_PANEL=false
 
@@ -110,13 +118,18 @@ ENABLE_TELEMETRY=false
 
 ### Custom Ports
 
-Edit `docker-compose.yml` to change the port:
+Simply update the `.env` file to use different ports:
 
-```yaml
-services:
-  engine:
-    ports:
-      - "9000:80"  # Change 8080 to your preferred port
+```bash
+# Use custom ports
+HTTP_PORT=9000
+HTTPS_PORT=8443
+HTTP_REDIRECT_PORT=8080
+```
+
+Then restart the services:
+```bash
+./manage-config.sh restart
 ```
 
 ## Architecture

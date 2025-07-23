@@ -4,6 +4,22 @@
 
 set -e  # Exit on any error
 
+# Load environment variables
+load_env() {
+    if [ -f ".env" ]; then
+        export $(grep -v '^#' .env | xargs)
+    fi
+    
+    # Set defaults if not specified
+    export HTTP_PORT=${HTTP_PORT:-8080}
+    export HTTPS_PORT=${HTTPS_PORT:-443}
+    export HTTP_REDIRECT_PORT=${HTTP_REDIRECT_PORT:-80}
+    export SSL_DOMAIN=${SSL_DOMAIN:-localhost}
+}
+
+# Load environment variables at startup
+load_env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -92,12 +108,20 @@ start_services() {
     # Show access information
     if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
         log_info "HTTPS is configured. Services available at:"
-        log_info "  🔒 https://localhost (Main hub)"
-        log_info "  🔄 http://localhost -> redirects to HTTPS"
+        if [ "$HTTPS_PORT" = "443" ]; then
+            log_info "  🔒 https://localhost (Main hub)"
+        else
+            log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+        fi
+        if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
+            log_info "  🔄 http://localhost -> redirects to HTTPS"
+        else
+            log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
+        fi
         log_warning "If using self-signed certificates, accept the browser security warning."
     else
         log_info "Services available at:"
-        log_info "  🌐 http://localhost:8080 (Main hub)"
+        log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
     fi
     
     show_status
@@ -125,12 +149,20 @@ restart_services() {
     # Show access information
     if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
         log_info "HTTPS is configured. Services available at:"
-        log_info "  🔒 https://localhost (Main hub)"
-        log_info "  🔄 http://localhost -> redirects to HTTPS"
+        if [ "$HTTPS_PORT" = "443" ]; then
+            log_info "  🔒 https://localhost (Main hub)"
+        else
+            log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+        fi
+        if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
+            log_info "  🔄 http://localhost -> redirects to HTTPS"
+        else
+            log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
+        fi
         log_warning "If using self-signed certificates, accept the browser security warning."
     else
         log_info "Services available at:"
-        log_info "  🌐 http://localhost:8080 (Main hub)"
+        log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
     fi
     
     show_status
@@ -153,12 +185,20 @@ rebuild_services() {
     # Show access information
     if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
         log_info "HTTPS is configured. Services available at:"
-        log_info "  🔒 https://localhost (Main hub)"
-        log_info "  🔄 http://localhost -> redirects to HTTPS"
+        if [ "$HTTPS_PORT" = "443" ]; then
+            log_info "  🔒 https://localhost (Main hub)"
+        else
+            log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+        fi
+        if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
+            log_info "  🔄 http://localhost -> redirects to HTTPS"
+        else
+            log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
+        fi
         log_warning "If using self-signed certificates, accept the browser security warning."
     else
         log_info "Services available at:"
-        log_info "  🌐 http://localhost:8080 (Main hub)"
+        log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
     fi
     
     show_status
@@ -238,7 +278,7 @@ setup_ssl_auto() {
     local cert_file="$1"
     local key_file="$2"
     local cert_dir="./certs"
-    local domain="localhost"
+    local domain="$SSL_DOMAIN"
     
     # Create certificates directory
     mkdir -p "$cert_dir"
@@ -367,7 +407,7 @@ http_only() {
     
     log_success "Switched to HTTP-only mode successfully!"
     log_info "Services available at:"
-    log_info "  🌐 http://localhost:8080 (Main hub)"
+    log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
 }
 
 create_https_nginx_config() {
@@ -548,15 +588,15 @@ update_docker_compose_https() {
     fi
     
     # Create HTTPS docker-compose configuration
-    cat > "$compose_file" << 'EOF'
+    cat > "$compose_file" << EOF
 services:
   # Engine server - Nginx with HTTPS support
   engine:
     image: nginx:alpine
     container_name: diagram-engine
     ports:
-      - "80:80"    # HTTP (redirects to HTTPS)
-      - "443:443"  # HTTPS
+      - "$HTTP_REDIRECT_PORT:80"    # HTTP (redirects to HTTPS)
+      - "$HTTPS_PORT:443"  # HTTPS
     volumes:
       - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./engine/html:/usr/share/nginx/html:ro
@@ -744,14 +784,14 @@ create_http_only_docker_compose() {
     local compose_file="./docker-compose.yml"
     
     # Create HTTP-only docker-compose configuration
-    cat > "$compose_file" << 'EOF'
+    cat > "$compose_file" << EOF
 services:
   # Engine server - Nginx with custom landing page
   engine:
     image: nginx:alpine
     container_name: diagram-engine
     ports:
-      - "8080:80"
+      - "$HTTP_PORT:80"
     volumes:
       - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./engine/html:/usr/share/nginx/html:ro

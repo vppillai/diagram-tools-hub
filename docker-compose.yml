@@ -1,13 +1,16 @@
 services:
-  # Engine server - Nginx with custom landing page
+  # Engine server - Nginx with HTTPS support
   engine:
     image: nginx:alpine
     container_name: diagram-engine
     ports:
-      - "8080:80"
+      - "${HTTP_REDIRECT_PORT:-80}:80" # HTTP (redirects to HTTPS)
+      - "${HTTPS_PORT:-443}:443" # HTTPS
     volumes:
       - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./engine/html:/usr/share/nginx/html:ro
+      - ./certs/cert.pem:/etc/ssl/certs/cert.pem:ro
+      - ./certs/key.pem:/etc/ssl/private/key.pem:ro
     depends_on:
       - drawio
       - excalidraw
