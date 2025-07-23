@@ -44,4 +44,4 @@ services:
 
 networks:
   default:
-    name: diagram-tools-network 
+    name: diagram-tools-network

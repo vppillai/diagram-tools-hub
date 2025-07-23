@@ -6,7 +6,13 @@ import '@tldraw/tldraw/tldraw.css'
 function App() {
     return (
         <div style={{ position: 'fixed', inset: 0 }}>
-            <Tldraw />
+            <Tldraw
+                options={{
+                    maxImageDimension: 5000,
+                    maxAssetSize: 10 * 1024 * 1024, // 10mb
+                }}
+                inferDarkMode
+            />
         </div>
     )
 }

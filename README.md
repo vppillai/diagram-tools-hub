@@ -13,12 +13,18 @@ git clone <your-repo-url>
 cd drawApp
 ```
 
-2. Start all services:
+2. Configure the application (optional):
+```bash
+cp .env.example .env
+# Edit .env to customize settings
+```
+
+3. Start all services:
 ```bash
 docker-compose up -d
 ```
 
-3. Access the tools:
+4. Access the tools:
    - **Unified Interface**: http://localhost:8080
    - **Draw.io Direct**: http://localhost:8080/drawio/
    - **Excalidraw Direct**: http://localhost:8080/excalidraw/
@@ -54,6 +60,36 @@ drawApp/
 ```
 
 ## 🛠️ Configuration
+
+### Environment Variables
+
+The application supports configuration through environment variables in the `.env` file:
+
+#### TLDraw Settings
+- `TLDRAW_DEBUG_PANEL`: Enable/disable the debug panel in tldraw (default: `false`)
+
+#### Development Settings
+- `NODE_ENV`: Environment mode (default: `production`)
+- `ENABLE_ANALYTICS`: Enable analytics tracking (default: `false`)
+- `ENABLE_TELEMETRY`: Enable telemetry collection (default: `false`)
+
+### Quick Configuration Management
+
+Use the provided management script for easy configuration:
+
+```bash
+# Show current configuration
+./manage-config.sh show
+
+# Enable tldraw debug panel
+./manage-config.sh enable-debug
+
+# Disable tldraw debug panel  
+./manage-config.sh disable-debug
+
+# Restart all services
+./manage-config.sh restart
+```
 
 ### Changing Ports
 

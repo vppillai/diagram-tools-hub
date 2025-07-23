@@ -6,8 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diagram Tools Hub</title>
     <link rel="icon" type="image/svg+xml"
-        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' style='stop-color:%236366f1'/><stop offset='100%25' style='stop-color:%238b5cf6'/></linearGradient></defs><rect width='32' height='32' rx='8' fill='url(%23g)'/><path d='M8 12h16M8 16h12M8 20h8' stroke='white' stroke-width='2' stroke-linecap='round'/><circle cx='22' cy='10' r='2' fill='white'/></svg>">
+
     <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --dark-bg: #0f0f23;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.8);
+            --text-muted: rgba(255, 255, 255, 0.6);
+            --shadow-primary: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --shadow-hover: 0 20px 60px rgba(0, 0, 0, 0.4);
+            --border-radius: 16px;
+            --border-radius-lg: 24px;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -15,82 +32,212 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--dark-bg);
+            background-image:
+                radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.15) 0%, transparent 50%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #fff;
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        .background-pattern {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.03;
+            background-image:
+                linear-gradient(30deg, rgba(255, 255, 255, 0.1) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, 0.1) 87.5%, rgba(255, 255, 255, 0.1)),
+                linear-gradient(150deg, rgba(255, 255, 255, 0.1) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, 0.1) 87.5%, rgba(255, 255, 255, 0.1)),
+                linear-gradient(30deg, rgba(255, 255, 255, 0.1) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, 0.1) 87.5%, rgba(255, 255, 255, 0.1)),
+                linear-gradient(150deg, rgba(255, 255, 255, 0.1) 12%, transparent 12.5%, transparent 87%, rgba(255, 255, 255, 0.1) 87.5%, rgba(255, 255, 255, 0.1));
+            background-size: 76px 44px;
+            background-position: 0 0, 0 0, 38px 22px, 38px 22px;
+            z-index: -1;
         }
 
         .container {
-            max-width: 1200px;
-            width: 90%;
+            max-width: 1400px;
+            width: 95%;
             margin: 0 auto;
             padding: 2rem;
+            position: relative;
+            z-index: 1;
         }
 
         .header {
             text-align: center;
-            margin-bottom: 3rem;
+            margin-bottom: 4rem;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .logo-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--primary-gradient);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-primary);
+        }
+
+        .logo-icon svg {
+            width: 32px;
+            height: 32px;
+            stroke: white;
+            stroke-width: 2;
+            fill: none;
         }
 
         .header h1 {
-            font-size: 3rem;
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-weight: 700;
             margin-bottom: 1rem;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(135deg, #fff 0%, rgba(255, 255, 255, 0.8) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.1;
         }
 
         .header p {
-            font-size: 1.2rem;
-            opacity: 0.9;
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
         }
 
         .tools-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 2rem;
-            margin-bottom: 3rem;
+            margin-bottom: 4rem;
         }
 
         .tool-card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 2rem;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border-radius: var(--border-radius-lg);
+            padding: 2.5rem;
             text-align: center;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--card-border);
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .tool-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .tool-card:hover::before {
+            opacity: 1;
         }
 
         .tool-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: var(--shadow-hover);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
         .tool-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 1.5rem;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 2rem;
+            border-radius: var(--border-radius);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 2.5rem;
+            font-size: 2rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .tool-icon.drawio {
+            background: #fff;
+            padding: 12px;
+        }
+
+        .tool-icon.excalidraw {
+            background: #fff;
+            padding: 8px;
+        }
+
+        .tool-icon.tldraw {
+            background: #fff;
+            padding: 12px;
+        }
+
+
+
+        .tool-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            transition: opacity 0.3s ease;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+
+        .tool-icon img:hover {
+            opacity: 0.9;
+        }
+
+        /* Fallback in case images don't load */
+        .tool-icon img[alt="Draw.io Logo"]::before {
+            content: "📊";
+            font-size: 2rem;
+        }
+
+        .tool-icon img[alt="Excalidraw Logo"]::before {
+            content: "✏️";
+            font-size: 2rem;
+        }
+
+        .tool-icon img[alt="tldraw Logo"]::before {
+            content: "🎨";
+            font-size: 2rem;
         }
 
         .tool-card h2 {
-            font-size: 1.8rem;
+            font-size: 1.75rem;
+            font-weight: 600;
             margin-bottom: 1rem;
+            color: var(--text-primary);
         }
 
         .tool-card p {
-            margin-bottom: 1.5rem;
-            opacity: 0.9;
+            margin-bottom: 2rem;
+            color: var(--text-secondary);
             line-height: 1.6;
+            font-size: 1rem;
         }
 
         .tool-buttons {
@@ -100,179 +247,423 @@
         }
 
         .btn {
-            padding: 0.75rem 1.5rem;
+            padding: 0.875rem 2rem;
             border: none;
-            border-radius: 10px;
-            font-size: 1rem;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn:hover::before {
+            left: 100%;
         }
 
         .btn-primary {
-            background: #fff;
-            color: #2a5298;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
             font-weight: 600;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
         }
 
         .btn-primary:hover {
-            background: #f0f0f0;
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
         }
 
         .btn-secondary {
-            background: transparent;
-            color: #fff;
-            border: 2px solid #fff;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
         }
 
         .status {
             text-align: center;
-            margin-top: 3rem;
+            margin-top: 4rem;
+            animation: fadeInUp 0.8s ease-out 0.3s both;
+        }
+
+        .status h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            color: var(--text-primary);
         }
 
         .status-grid {
             display: inline-grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
+            gap: 3rem;
             margin-top: 1rem;
+            padding: 2rem;
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--card-border);
         }
 
         .status-item {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
         }
 
         .status-indicator {
-            width: 10px;
-            height: 10px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            background: #4ade80;
+            background: #10b981;
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+            transition: all 0.3s ease;
         }
 
         .status-indicator.loading {
-            background: #fbbf24;
+            background: #f59e0b;
+            box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
             animation: pulse 2s infinite;
         }
 
-        @keyframes pulse {
-            0% {
+        .status-indicator.error {
+            background: #ef4444;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+        }
+
+        .status-item span {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
                 opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
             }
 
             50% {
-                opacity: 0.5;
-            }
-
-            100% {
-                opacity: 1;
+                opacity: 0.7;
+                transform: scale(1.1);
             }
         }
 
         @media (max-width: 768px) {
-            .header h1 {
-                font-size: 2rem;
+            .container {
+                padding: 1rem;
+            }
+
+            .tools-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .tool-card {
+                padding: 2rem;
             }
 
             .tool-buttons {
                 flex-direction: column;
+            }
+
+            .status-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 2rem;
+            }
+
+            .header {
+                margin-bottom: 3rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .logo-icon {
+                width: 48px;
+                height: 48px;
+            }
+
+            .logo-icon svg {
+                width: 24px;
+                height: 24px;
             }
         }
     </style>
 </head>
 
 <body>
+    <div class="background-pattern"></div>
+
     <div class="container">
         <div class="header">
-            <h1>Diagram Tools Hub</h1>
-            <p>Your unified interface for locallyhosted professional diagramming and drawing tools</p>
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M3 7h18M3 12h12M3 17h8" />
+                        <circle cx="19" cy="7" r="2" />
+                    </svg>
+                </div>
+                <div>
+                    <h1>Diagram Tools Hub</h1>
+                    <p>Professional diagramming and drawing tools, locally hosted for privacy and performance</p>
+                </div>
+            </div>
         </div>
 
         <div class="tools-grid">
             <div class="tool-card">
-                <div class="tool-icon">📊</div>
+                <div class="tool-icon drawio">
+                    <img src="logos/drawio-logo.png" alt="Draw.io Logo" />
+                </div>
                 <h2>Draw.io</h2>
-                <p>Professional diagramming tool for flowcharts, network diagrams, UML, and more.</p>
+                <p>Professional diagramming platform for flowcharts, network diagrams, UML, organizational charts, and
+                    technical drawings.</p>
                 <div class="tool-buttons">
-                    <a href="/drawio/" class="btn btn-primary" onclick="launchTool('drawio')">Launch</a>
+                    <a href="/drawio/" class="btn btn-primary" onclick="launchTool('drawio')">
+                        Launch App
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                    </a>
                     <a href="/drawio/" target="_blank" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
 
             <div class="tool-card">
-                <div class="tool-icon">✏️</div>
+                <div class="tool-icon excalidraw">
+                    <img src="logos/excalidraw-logo.svg" alt="Excalidraw Logo" />
+                </div>
                 <h2>Excalidraw</h2>
-                <p>Virtual whiteboard for sketching hand-drawn like diagrams and illustrations.</p>
+                <p>Virtual whiteboard for sketching hand-drawn diagrams, wireframes, and collaborative visual thinking
+                    sessions.</p>
                 <div class="tool-buttons">
-                    <a href="/excalidraw/" class="btn btn-primary" onclick="launchTool('excalidraw')">Launch</a>
+                    <a href="/excalidraw/" class="btn btn-primary" onclick="launchTool('excalidraw')">
+                        Launch App
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                    </a>
                     <a href="/excalidraw/" target="_blank" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
 
             <div class="tool-card">
-                <div class="tool-icon">🎨</div>
+                <div class="tool-icon tldraw">
+                    <img src="logos/tldraw-logo.svg" alt="tldraw Logo" />
+                </div>
                 <h2>tldraw</h2>
-                <p>Collaborative drawing tool with a focus on simplicity and real-time collaboration.</p>
+                <p>Modern collaborative drawing canvas with infinite zoom, real-time collaboration, and powerful shape
+                    tools.</p>
                 <div class="tool-buttons">
-                    <a href="/tldraw/" class="btn btn-primary" onclick="launchTool('tldraw')">Launch</a>
+                    <a href="/tldraw/" class="btn btn-primary" onclick="launchTool('tldraw')">
+                        Launch App
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                    </a>
                     <a href="/tldraw/" target="_blank" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
+
+
         </div>
 
         <div class="status">
             <h3>Service Status</h3>
             <div class="status-grid">
                 <div class="status-item">
-                    <span class="status-indicator" id="drawio-status"></span>
+                    <span class="status-indicator loading" id="drawio-status"></span>
                     <span>Draw.io</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-indicator" id="excalidraw-status"></span>
+                    <span class="status-indicator loading" id="excalidraw-status"></span>
                     <span>Excalidraw</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-indicator" id="tldraw-status"></span>
+                    <span class="status-indicator loading" id="tldraw-status"></span>
                     <span>tldraw</span>
                 </div>
+
             </div>
         </div>
     </div>
 
     <script>
-        // Track tool launches
+        // Track tool launches with enhanced analytics
         function launchTool(tool) {
-            console.log(`Launching ${tool}...`);
+            console.log(`🚀 Launching ${tool}...`);
+
+            // Add visual feedback
+            const card = document.querySelector(`[onclick="launchTool('${tool}')"]`).closest('.tool-card');
+            card.style.transform = 'translateY(-8px) scale(0.98)';
+            setTimeout(() => {
+                card.style.transform = '';
+            }, 200);
+
             // You can add analytics or other tracking here
-        }
-
-        // Check service status
-        async function checkStatus() {
-            const services = ['drawio', 'excalidraw', 'tldraw'];
-
-            for (const service of services) {
-                const indicator = document.getElementById(`${service}-status`);
-                indicator.className = 'status-indicator loading';
-
-                try {
-                    const response = await fetch(`/${service}/`, { method: 'HEAD' });
-                    indicator.className = 'status-indicator';
-                } catch (error) {
-                    indicator.style.background = '#ef4444';
-                }
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'tool_launch', {
+                    'event_category': 'engagement',
+                    'event_label': tool
+                });
             }
         }
 
-        // Check status on load and every 30 seconds
-        checkStatus();
-        setInterval(checkStatus, 30000);
+        // Enhanced service status checker
+        async function checkStatus() {
+            const services = [
+                { name: 'drawio', path: '/drawio/' },
+                { name: 'excalidraw', path: '/excalidraw/' },
+                { name: 'tldraw', path: '/tldraw/' }
+            ];
+
+            const statusPromises = services.map(async (service) => {
+                const indicator = document.getElementById(`${service.name}-status`);
+                indicator.className = 'status-indicator loading';
+
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                    const response = await fetch(service.path, {
+                        method: 'HEAD',
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        indicator.className = 'status-indicator';
+                        return { service: service.name, status: 'online' };
+                    } else {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                } catch (error) {
+                    indicator.className = 'status-indicator error';
+                    console.warn(`Service ${service.name} is not accessible:`, error.message);
+                    return { service: service.name, status: 'offline' };
+                }
+            });
+
+            try {
+                const results = await Promise.all(statusPromises);
+                const onlineServices = results.filter(r => r.status === 'online').length;
+                console.log(`✅ ${onlineServices}/${services.length} services online`);
+            } catch (error) {
+                console.error('Error checking service status:', error);
+            }
+        }
+
+        // Enhanced initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initial status check
+            checkStatus();
+
+            // Set up periodic status checks
+            setInterval(checkStatus, 30000);
+
+            // Handle logo loading errors with fallbacks
+            document.querySelectorAll('.tool-icon img').forEach(img => {
+                img.addEventListener('error', function () {
+                    const alt = this.alt;
+                    const parent = this.parentElement;
+
+                    // Create fallback based on the tool
+                    const fallback = document.createElement('div');
+                    fallback.style.cssText = 'font-size: 2rem; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;';
+
+                    if (alt.includes('Draw.io')) {
+                        fallback.innerHTML = '📊';
+                        parent.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%)';
+                    } else if (alt.includes('Excalidraw')) {
+                        fallback.innerHTML = '✏️';
+                        parent.style.background = 'linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%)';
+                    } else if (alt.includes('tldraw')) {
+                        fallback.innerHTML = '🎨';
+                        parent.style.background = 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)';
+                    }
+
+                    parent.removeChild(this);
+                    parent.appendChild(fallback);
+                });
+            });
+
+            // Add subtle parallax effect on scroll
+            window.addEventListener('scroll', () => {
+                const scrolled = window.pageYOffset;
+                const background = document.querySelector('.background-pattern');
+                if (background) {
+                    background.style.transform = `translateY(${scrolled * 0.1}px)`;
+                }
+            });
+
+            // Add intersection observer for animations
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.animationPlayState = 'running';
+                    }
+                });
+            }, observerOptions);
+
+            document.querySelectorAll('.tool-card').forEach((card) => {
+                observer.observe(card);
+            });
+        });
+
+        // Add keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '1') launchTool('drawio');
+            if (e.key === '2') launchTool('excalidraw');
+            if (e.key === '3') launchTool('tldraw');
+        });
     </script>
 </body>
 
