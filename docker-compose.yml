@@ -5,7 +5,7 @@ services:
     container_name: diagram-engine
     ports:
       - "${HTTP_REDIRECT_PORT:-80}:80"    # HTTP (redirects to HTTPS)
-      - "8080:443"  # HTTPS
+      - "${HTTPS_PORT:-443}:443"  # HTTPS
     volumes:
       - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./engine/html:/usr/share/nginx/html:ro
