@@ -1,0 +1,91 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run security scans weekly
+    - cron: '0 2 * * 1'
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: Run OWASP ZAP scan
+        uses: zaproxy/action-full-scan@v0.8.0
+        with:
+          target: 'http://localhost:8080'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+
+      - name: Check for secrets in code
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: HEAD
+          head: HEAD
+
+      - name: Run Bandit security linter
+        run: |
+          pip install bandit
+          bandit -r . -f json -o bandit-report.json || true
+
+      - name: Comment security findings
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 🔒 Security Scan Results\n\n';
+            
+            // Add Trivy results if available
+            if (fs.existsSync('trivy-results.sarif')) {
+              comment += '### 🔍 Vulnerability Scan\n';
+              comment += 'Trivy scan completed. Check the Security tab for details.\n\n';
+            }
+            
+            // Add Bandit results if available
+            if (fs.existsSync('bandit-report.json')) {
+              const banditReport = JSON.parse(fs.readFileSync('bandit-report.json', 'utf8'));
+              if (banditReport.results && banditReport.results.length > 0) {
+                comment += '### ⚠️ Security Issues Found\n';
+                banditReport.results.forEach(result => {
+                  comment += `- **${result.issue_severity}**: ${result.issue_text} (${result.filename}:${result.line_number})\n`;
+                });
+              } else {
+                comment += '### ✅ No security issues found by Bandit\n';
+              }
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            }); 

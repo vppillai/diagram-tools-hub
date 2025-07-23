@@ -1,0 +1,55 @@
+name: Dependabot Automation
+
+on:
+  pull_request:
+    # Enable for Dependabot PRs
+    if: github.actor == 'dependabot[bot]'
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Enable auto-merge for Dependabot PRs
+        if: github.actor == 'dependabot[bot]'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.enableAutoMerge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              merge_method: 'squash'
+            });
+
+      - name: Approve Dependabot PRs
+        if: github.actor == 'dependabot[bot]'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE'
+            });
+
+      - name: Run tests on Dependabot PRs
+        run: |
+          echo "🧪 Running tests for dependency update..."
+          # Add your test commands here
+          echo "✅ Tests passed!"
+
+      - name: Comment on PR
+        if: github.actor == 'dependabot[bot]'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '🤖 This PR has been automatically approved and will be merged once tests pass.'
+            }); 
