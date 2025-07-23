@@ -38,12 +38,14 @@
                 radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.15) 0%, transparent 50%);
-            min-height: 100vh;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--text-primary);
-            overflow-x: hidden;
+            overflow: hidden;
         }
 
         .background-pattern {
@@ -66,15 +68,19 @@
         .container {
             max-width: 1400px;
             width: 95%;
+            height: 100vh;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 1.5rem;
             position: relative;
             z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .header {
             text-align: center;
-            margin-bottom: 4rem;
+            margin-bottom: 2rem;
             animation: fadeInUp 0.8s ease-out;
         }
 
@@ -105,8 +111,8 @@
         }
 
         .logo-icon {
-            width: 64px;
-            height: 64px;
+            width: 48px;
+            height: 48px;
             background: var(--primary-gradient);
             border-radius: var(--border-radius);
             display: flex;
@@ -116,7 +122,7 @@
         }
 
         .logo-icon svg {
-            width: 32px;
+            width: 24px;
             height: 32px;
             stroke: white;
             stroke-width: 2;
@@ -124,9 +130,9 @@
         }
 
         .header h1 {
-            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-size: clamp(2rem, 4vw, 3rem);
             font-weight: 700;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             background: linear-gradient(135deg, #fff 0%, rgba(255, 255, 255, 0.8) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -135,26 +141,26 @@
         }
 
         .header p {
-            font-size: 1.25rem;
+            font-size: 1rem;
             color: var(--text-secondary);
             font-weight: 400;
             max-width: 600px;
             margin: 0 auto;
-            line-height: 1.6;
+            line-height: 1.4;
         }
 
         .tools-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
-            margin-bottom: 4rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .tool-card {
             background: var(--card-bg);
             backdrop-filter: blur(20px);
             border-radius: var(--border-radius-lg);
-            padding: 2.5rem;
+            padding: 2rem;
             text-align: center;
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             border: 1px solid var(--card-border);
@@ -187,9 +193,9 @@
         }
 
         .tool-icon {
-            width: 100px;
-            height: 100px;
-            margin: 0 auto 2rem;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
             border-radius: var(--border-radius);
             display: flex;
             align-items: center;
@@ -246,17 +252,17 @@
         }
 
         .tool-card h2 {
-            font-size: 1.75rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
             color: var(--text-primary);
         }
 
         .tool-card p {
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
             color: var(--text-secondary);
-            line-height: 1.6;
-            font-size: 1rem;
+            line-height: 1.5;
+            font-size: 0.95rem;
         }
 
         .tool-buttons {
@@ -321,23 +327,23 @@
 
         .status {
             text-align: center;
-            margin-top: 4rem;
+            margin-top: 2rem;
             animation: fadeInUp 0.8s ease-out 0.3s both;
         }
 
         .status h3 {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             font-weight: 600;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
             color: var(--text-primary);
         }
 
         .status-grid {
             display: inline-grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 3rem;
-            margin-top: 1rem;
-            padding: 2rem;
+            gap: 2rem;
+            margin-top: 0.5rem;
+            padding: 1.5rem;
             background: var(--card-bg);
             border-radius: var(--border-radius);
             border: 1px solid var(--card-border);
@@ -405,15 +411,18 @@
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
+                height: 100vh;
+                justify-content: space-between;
             }
 
             .tools-grid {
                 grid-template-columns: 1fr;
-                gap: 1.5rem;
+                gap: 1rem;
+                margin-bottom: 1rem;
             }
 
             .tool-card {
-                padding: 2rem;
+                padding: 1.5rem;
             }
 
             .tool-buttons {
@@ -422,28 +431,91 @@
 
             .status-grid {
                 grid-template-columns: repeat(3, 1fr);
-                gap: 2rem;
+                gap: 1rem;
+                padding: 1rem;
             }
 
             .header {
-                margin-bottom: 3rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .header h1 {
+                font-size: clamp(1.5rem, 6vw, 2.5rem);
+            }
+
+            .header p {
+                font-size: 0.9rem;
+            }
+
+            .tool-card h2 {
+                font-size: 1.25rem;
+            }
+
+            .tool-card p {
+                font-size: 0.9rem;
+                margin-bottom: 1rem;
+            }
+
+            .status h3 {
+                font-size: 1rem;
+                margin-bottom: 0.75rem;
             }
         }
 
         @media (max-width: 480px) {
+            .container {
+                padding: 0.75rem;
+            }
+
             .logo {
                 flex-direction: column;
                 gap: 0.5rem;
             }
 
             .logo-icon {
-                width: 48px;
-                height: 48px;
+                width: 40px;
+                height: 40px;
             }
 
             .logo-icon svg {
-                width: 24px;
-                height: 24px;
+                width: 20px;
+                height: 20px;
+            }
+
+            .header h1 {
+                font-size: clamp(1.25rem, 7vw, 2rem);
+            }
+
+            .header p {
+                font-size: 0.85rem;
+            }
+
+            .tool-card {
+                padding: 1.25rem;
+            }
+
+            .tool-icon {
+                width: 60px;
+                height: 60px;
+                margin-bottom: 1rem;
+            }
+
+            .tool-card h2 {
+                font-size: 1.1rem;
+            }
+
+            .tool-card p {
+                font-size: 0.85rem;
+            }
+
+            .status-grid {
+                gap: 0.75rem;
+                padding: 1rem;
+            }
+
+            .github-link .btn {
+                font-size: 0.8rem;
+                padding: 0.6rem 1.2rem;
             }
         }
     </style>
