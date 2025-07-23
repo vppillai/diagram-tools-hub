@@ -172,28 +172,21 @@ jobs:
             const version = release.tag_name;
             const body = release.body || '';
             
-            const dockerImages = `
-
-### 🐳 Docker Images
-
-- **TLDraw**: \`ghcr.io/${{ github.repository }}/tldraw:${version}\`
-- **Engine**: \`ghcr.io/${{ github.repository }}/engine:${version}\`
-- **Latest**: \`ghcr.io/${{ github.repository }}/tldraw:latest\`
-
-### 🚀 Quick Start with Docker
-
-\`\`\`bash
-# Pull the latest images
-docker pull ghcr.io/${{ github.repository }}/tldraw:${version}
-docker pull ghcr.io/${{ github.repository }}/engine:${version}
-
-# Or use docker-compose with specific version
-git clone https://github.com/${{ github.repository }}.git
-cd diagram-tools-hub
-git checkout ${version}
-./manage-config.sh start
-\`\`\`
-`;
+            const dockerImages = '\n\n### 🐳 Docker Images\n\n' +
+              '- **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:' + version + '`\n' +
+              '- **Engine**: `ghcr.io/${{ github.repository }}/engine:' + version + '`\n' +
+              '- **Latest**: `ghcr.io/${{ github.repository }}/tldraw:latest`\n\n' +
+              '### 🚀 Quick Start with Docker\n\n' +
+              '```bash\n' +
+              '# Pull the latest images\n' +
+              'docker pull ghcr.io/${{ github.repository }}/tldraw:' + version + '\n' +
+              'docker pull ghcr.io/${{ github.repository }}/engine:' + version + '\n\n' +
+              '# Or use docker-compose with specific version\n' +
+              'git clone https://github.com/${{ github.repository }}.git\n' +
+              'cd diagram-tools-hub\n' +
+              'git checkout ' + version + '\n' +
+              './manage-config.sh start\n' +
+              '```\n';
             
             const updatedBody = body + dockerImages;
             
