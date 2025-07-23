@@ -16,7 +16,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost/health || exit 1
 
-# Test nginx configuration before starting
-RUN nginx -t
-
-CMD ["nginx", "-g", "daemon off;"] 
+# Test nginx configuration at startup instead of build time
+CMD ["sh", "-c", "nginx -t && nginx -g 'daemon off;'"] 
