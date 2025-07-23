@@ -5,6 +5,10 @@ on:
     # Enable for Dependabot PRs
     if: github.actor == 'dependabot[bot]'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   dependabot:
     runs-on: ubuntu-latest
