@@ -19,10 +19,10 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 ### 2. Docker Release Build (`docker-release.yml`)
 
 **Triggers:**
-- Release publication
+- Tag push (e.g., `git tag v1.0.0 && git push origin v1.0.0`)
 
 **Features:**
-- ✅ Build and push Docker images to GitHub Container Registry (release only)
+- ✅ Build and push Docker images to GitHub Container Registry (tag only)
 - ✅ Automatic tagging with version numbers
 - ✅ Update release notes with Docker image references
 - ✅ Clean container registry (no non-release images)
@@ -82,7 +82,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 The workflow will:
 - Generate a changelog from recent commits
 - Create a GitHub release with detailed notes
-- Trigger Docker image builds (via separate workflow)
+- Create a git tag (which triggers Docker image builds)
 - Update release notes with Docker image references
 
 ### Automatic Workflows

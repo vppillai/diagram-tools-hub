@@ -70,6 +70,7 @@ jobs:
         with:
           tag_name: v${{ github.event.inputs.version }}
           release_name: Release v${{ github.event.inputs.version }}
+          generate_release_notes: true
           body: |
             ## 🚀 Release v${{ github.event.inputs.version }}
             
