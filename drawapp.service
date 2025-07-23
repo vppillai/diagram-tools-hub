@@ -1,0 +1,32 @@
+[Unit]
+Description=DrawApp Docker Services
+Documentation=https://github.com/your-repo/drawApp
+Requires=docker.service
+After=docker.service network.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/path/to/drawApp
+ExecStart=/path/to/drawApp/manage-config.sh start
+ExecStop=/path/to/drawApp/manage-config.sh stop
+ExecReload=/path/to/drawApp/manage-config.sh restart
+TimeoutStartSec=300
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=10
+
+# Environment variables
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=DOCKER_COMPOSE_IGNORE_ORPHANS=1
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/path/to/drawApp
+
+[Install]
+WantedBy=multi-user.target 

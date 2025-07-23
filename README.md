@@ -54,6 +54,62 @@ The `manage-config.sh` script handles most operations:
 ./manage-config.sh rebuild    # Rebuild containers
 ```
 
+## Auto-Start Service
+
+Install as a systemd service for automatic startup on server reboot:
+
+### Quick Installation
+
+```bash
+# Simple installation (recommended)
+sudo ./install-service.sh
+
+# Or use the management script directly
+sudo ./manage-config.sh install-service
+```
+
+### Service Management
+
+```bash
+# Check service status
+./manage-config.sh service-status
+
+# Uninstall service (requires sudo)
+sudo ./manage-config.sh uninstall-service
+```
+
+### Service Management
+
+Once installed, you can manage the service using systemctl:
+
+```bash
+# Start the service
+sudo systemctl start drawapp
+
+# Stop the service
+sudo systemctl stop drawapp
+
+# Restart the service
+sudo systemctl restart drawapp
+
+# Check status
+sudo systemctl status drawapp
+
+# View logs
+sudo journalctl -u drawapp -f
+
+# Enable/disable auto-start
+sudo systemctl enable drawapp   # Enable auto-start
+sudo systemctl disable drawapp  # Disable auto-start
+```
+
+The service will automatically:
+- Start on system boot
+- Restart on failure
+- Handle SSL certificate generation
+- Manage Docker containers
+- Provide proper logging
+
 ## HTTPS Support
 
 ### Automatic HTTPS

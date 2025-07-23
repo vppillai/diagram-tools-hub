@@ -57,6 +57,11 @@ show_help() {
     echo "  status                  Show status of all containers"
     echo "  logs [SERVICE]          Show logs for all services or specific service"
     echo ""
+    echo "Service Management Commands:"
+    echo "  install-service         Install as systemd service for auto-start on boot"
+    echo "  uninstall-service       Remove systemd service"
+    echo "  service-status          Show systemd service status"
+    echo ""
     echo "Configuration Commands:"
     echo "  show                    Show current configuration"
     echo "  http-only               Disable HTTPS and use HTTP only"
@@ -75,9 +80,12 @@ show_help() {
     echo "  $0 rebuild                      # Rebuild with SSL"
     echo "  $0 logs tldraw                  # Show tldraw logs"
     echo "  $0 status                       # Show container status"
+    echo "  sudo $0 install-service         # Install as systemd service"
+    echo "  sudo $0 uninstall-service       # Remove systemd service"
     echo ""
     echo "Note: SSL certificates are automatically generated if not present."
     echo "      Use 'http-only' command to disable HTTPS."
+    echo "      Service installation requires root privileges (sudo)."
 }
 
 show_config() {
@@ -952,6 +960,94 @@ if ! sudo docker info >/dev/null 2>&1; then
     exit 1
 fi
 
+# Service management functions
+install_service() {
+    local service_file="drawapp.service"
+    local systemd_dir="/etc/systemd/system"
+    local current_dir=$(pwd)
+    local current_user=$(whoami)
+    
+    log_info "Installing DrawApp systemd service..."
+    
+    # Check if running as root or with sudo
+    if [ "$EUID" -ne 0 ]; then
+        log_error "Service installation requires root privileges. Please run with sudo."
+        echo "Usage: sudo $0 install-service"
+        exit 1
+    fi
+    
+    # Check if service file exists
+    if [ ! -f "$service_file" ]; then
+        log_error "Service file not found: $service_file"
+        exit 1
+    fi
+    
+    # Update service file with current paths
+    log_info "Updating service file with current paths..."
+    sed -i "s|WorkingDirectory=.*|WorkingDirectory=$current_dir|g" "$service_file"
+    sed -i "s|ExecStart=.*|ExecStart=$current_dir/manage-config.sh start|g" "$service_file"
+    sed -i "s|ExecStop=.*|ExecStop=$current_dir/manage-config.sh stop|g" "$service_file"
+    sed -i "s|ExecReload=.*|ExecReload=$current_dir/manage-config.sh restart|g" "$service_file"
+    sed -i "s|ReadWritePaths=.*|ReadWritePaths=$current_dir|g" "$service_file"
+    
+    # Copy service file to systemd directory
+    log_info "Copying service file to $systemd_dir..."
+    cp "$service_file" "$systemd_dir/"
+    chmod 644 "$systemd_dir/$service_file"
+    
+    # Reload systemd and enable service
+    log_info "Reloading systemd daemon..."
+    systemctl daemon-reload
+    
+    log_info "Enabling DrawApp service for auto-start..."
+    systemctl enable drawapp.service
+    
+    log_success "DrawApp service installed and enabled successfully!"
+    log_info "Service will auto-start on system boot."
+    log_info "Use 'sudo systemctl start drawapp' to start now"
+    log_info "Use 'sudo systemctl status drawapp' to check status"
+    log_info "Use 'sudo systemctl stop drawapp' to stop"
+    log_info "Use 'sudo systemctl restart drawapp' to restart"
+}
+
+uninstall_service() {
+    log_info "Uninstalling DrawApp systemd service..."
+    
+    # Check if running as root or with sudo
+    if [ "$EUID" -ne 0 ]; then
+        log_error "Service uninstallation requires root privileges. Please run with sudo."
+        echo "Usage: sudo $0 uninstall-service"
+        exit 1
+    fi
+    
+    # Stop and disable service
+    log_info "Stopping and disabling service..."
+    systemctl stop drawapp.service 2>/dev/null || true
+    systemctl disable drawapp.service 2>/dev/null || true
+    
+    # Remove service file
+    log_info "Removing service file..."
+    rm -f /etc/systemd/system/drawapp.service
+    
+    # Reload systemd
+    log_info "Reloading systemd daemon..."
+    systemctl daemon-reload
+    
+    log_success "DrawApp service uninstalled successfully!"
+}
+
+service_status() {
+    if systemctl is-active --quiet drawapp.service; then
+        log_success "DrawApp service is running"
+        systemctl status drawapp.service --no-pager -l
+    elif systemctl is-enabled --quiet drawapp.service; then
+        log_warning "DrawApp service is enabled but not running"
+        systemctl status drawapp.service --no-pager -l
+    else
+        log_info "DrawApp service is not installed or not enabled"
+    fi
+}
+
 case "$1" in
     start)
         start_services "$@"
@@ -994,6 +1090,15 @@ case "$1" in
         ;;
     restore-config)
         restore_config "$@"
+        ;;
+    install-service)
+        install_service
+        ;;
+    uninstall-service)
+        uninstall_service
+        ;;
+    service-status)
+        service_status
         ;;
     help|--help|-h)
         show_help
