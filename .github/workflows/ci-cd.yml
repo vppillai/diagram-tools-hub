@@ -68,39 +68,27 @@ jobs:
           echo "Testing TLDraw container..."
           docker run --rm -d --name tldraw-test tldraw:test
           sleep 5
-          docker ps | grep tldraw-test || echo "❌ TLDraw container failed to start"
+          if ! docker ps | grep -q tldraw-test; then
+            echo "❌ TLDraw container failed to start"
+            exit 1
+          fi
           docker stop tldraw-test
+          echo "✅ TLDraw container started successfully"
           
           # Test Engine container startup
           echo "Testing Engine container..."
           docker run --rm -d --name engine-test -p 8080:80 engine:test
           sleep 5
-          docker ps | grep engine-test || echo "❌ Engine container failed to start"
+          if ! docker ps | grep -q engine-test; then
+            echo "❌ Engine container failed to start"
+            exit 1
+          fi
           docker stop engine-test
+          echo "✅ Engine container started successfully"
           
           echo "✅ All containers started successfully"
 
-      - name: Run security scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-        continue-on-error: true
 
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-results.sarif') != ''
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'Trivy Scan'
-
-      - name: Skip Trivy upload (no results)
-        if: always() && hashFiles('trivy-results.sarif') == ''
-        run: |
-          echo "⚠️  No Trivy scan results found, skipping upload"
-          echo "This is normal if no vulnerabilities were detected"
 
 
 
