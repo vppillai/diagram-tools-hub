@@ -41,7 +41,7 @@ jobs:
         with:
           context: ./tldraw
           push: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/tldraw:test
+          tags: tldraw:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -51,7 +51,7 @@ jobs:
           context: ./engine
           file: ./engine/Dockerfile
           push: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/engine:test
+          tags: engine:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -66,14 +66,14 @@ jobs:
           
           # Test TLDraw container startup
           echo "Testing TLDraw container..."
-          docker run --rm -d --name tldraw-test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/tldraw:test
+          docker run --rm -d --name tldraw-test tldraw:test
           sleep 5
           docker ps | grep tldraw-test || echo "❌ TLDraw container failed to start"
           docker stop tldraw-test
           
           # Test Engine container startup
           echo "Testing Engine container..."
-          docker run --rm -d --name engine-test -p 8080:80 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/engine:test
+          docker run --rm -d --name engine-test -p 8080:80 engine:test
           sleep 5
           docker ps | grep engine-test || echo "❌ Engine container failed to start"
           docker stop engine-test
