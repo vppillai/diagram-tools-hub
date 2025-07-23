@@ -37,23 +37,16 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and test TLDraw
-        uses: docker/build-push-action@v5
-        with:
-          context: ./tldraw
-          push: false
-          tags: tldraw:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          cd ./tldraw
+          docker build -t tldraw:test .
+          echo "✅ TLDraw image built successfully"
 
       - name: Build and test Engine (Frontend)
-        uses: docker/build-push-action@v5
-        with:
-          context: ./engine
-          file: ./engine/Dockerfile
-          push: false
-          tags: engine:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          cd ./engine
+          docker build -t engine:test .
+          echo "✅ Engine image built successfully"
 
       - name: Test Docker Compose
         run: |
