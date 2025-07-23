@@ -9,17 +9,25 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 **Triggers:**
 - Push to `main` or `develop` branches
 - Pull requests to `main`
-- Release publication
 
 **Features:**
 - ✅ Build and test TLDraw application
 - ✅ Validate Docker Compose configuration
 - ✅ Security scanning with Trivy
-- ✅ Build and push Docker images to GitHub Container Registry
-- ✅ Automatic release notes generation
 - ✅ Staging and production deployment hooks
 
-### 2. Release Management (`release.yml`)
+### 2. Docker Release Build (`docker-release.yml`)
+
+**Triggers:**
+- Release publication
+
+**Features:**
+- ✅ Build and push Docker images to GitHub Container Registry (release only)
+- ✅ Automatic tagging with version numbers
+- ✅ Update release notes with Docker image references
+- ✅ Clean container registry (no non-release images)
+
+### 3. Release Management (`release.yml`)
 
 **Manual trigger** with customizable inputs:
 - Version number (e.g., 1.0.0)
@@ -32,7 +40,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Quick start instructions
 - ✅ Feature highlights
 
-### 3. Dependabot Automation (`dependabot.yml`)
+### 4. Dependabot Automation (`dependabot.yml`)
 
 **Triggers:**
 - Dependabot pull requests
@@ -43,7 +51,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Automated testing
 - ✅ PR comments with status
 
-### 4. Security Scanning (`security.yml`)
+### 5. Security Scanning (`security.yml`)
 
 **Triggers:**
 - Weekly scheduled scans (Mondays at 2 AM)
@@ -74,7 +82,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 The workflow will:
 - Generate a changelog from recent commits
 - Create a GitHub release with detailed notes
-- Trigger Docker image builds
+- Trigger Docker image builds (via separate workflow)
 - Update release notes with Docker image references
 
 ### Automatic Workflows
@@ -106,10 +114,11 @@ The workflows use these secrets (if needed):
 
 ### Docker Images
 
-Images are automatically built and pushed to:
+Images are automatically built and pushed to (release only):
 - `ghcr.io/vppillai/diagram-tools-hub/tldraw:latest`
 - `ghcr.io/vppillai/diagram-tools-hub/engine:latest`
 - Tagged versions: `ghcr.io/vppillai/diagram-tools-hub/tldraw:v1.0.0`
+- **No non-release images** - keeps container registry clean
 
 ### Branch Protection
 
