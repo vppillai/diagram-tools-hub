@@ -37,12 +37,11 @@ jobs:
           category: 'Trivy Security Scan'
 
       - name: Run Snyk security scan
-        uses: snyk/actions/node@master
-        working-directory: ./tldraw
+        run: |
+          cd ./tldraw
+          npx snyk test --severity-threshold=high
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
         continue-on-error: true
 
       - name: Check for secrets in code
