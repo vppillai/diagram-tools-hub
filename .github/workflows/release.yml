@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., 1.0.0)'
+        description: 'Release version (e.g., 1.0.0 or v1.0.0 - will be normalized to v1.0.0)'
         required: true
         type: string
       release_type:
@@ -41,6 +41,29 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Normalize version format
+        id: normalize_version
+        run: |
+          # Get the input version
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          
+          # Remove any existing 'v' prefix and add a new one
+          # This ensures format is always vx.y.z
+          CLEAN_VERSION=$(echo "$INPUT_VERSION" | sed 's/^v//')
+          NORMALIZED_VERSION="v$CLEAN_VERSION"
+          
+          # Validate version format (x.y.z)
+          if ! echo "$CLEAN_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "❌ Error: Version must be in format x.y.z (e.g., 1.0.0)"
+            echo "Received: $INPUT_VERSION"
+            exit 1
+          fi
+          
+          echo "Original version: $INPUT_VERSION"
+          echo "Normalized version: $NORMALIZED_VERSION"
+          echo "normalized_version=$NORMALIZED_VERSION" >> $GITHUB_OUTPUT
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+
       - name: Generate changelog
         id: changelog
         uses: actions/github-script@v7
@@ -68,10 +91,10 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: Release v${{ github.event.inputs.version }}
+          tag_name: ${{ steps.normalize_version.outputs.normalized_version }}
+          name: Release ${{ steps.normalize_version.outputs.normalized_version }}
           body: |
-            ## 🚀 Release v${{ github.event.inputs.version }}
+            ## 🚀 Release ${{ steps.normalize_version.outputs.normalized_version }}
             
             ### What's Changed
             
@@ -79,8 +102,8 @@ jobs:
             
             ### 🐳 Docker Images
             
-            - **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:v${{ github.event.inputs.version }}`
-            - **Engine**: `ghcr.io/${{ github.repository }}/engine:v${{ github.event.inputs.version }}`
+            - **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:${{ steps.normalize_version.outputs.normalized_version }}`
+            - **Engine**: `ghcr.io/${{ github.repository }}/engine:${{ steps.normalize_version.outputs.normalized_version }}`
             
             ### 🚀 Quick Start
             
@@ -90,7 +113,7 @@ jobs:
             cd diagram-tools-hub
             
             # Checkout this release
-            git checkout v${{ github.event.inputs.version }}
+            git checkout ${{ steps.normalize_version.outputs.normalized_version }}
             
             # Start all services
             ./manage-config.sh start
@@ -113,14 +136,14 @@ jobs:
             
             ### 📝 Changelog
             
-            See the [full changelog](https://github.com/${{ github.repository }}/commits/v${{ github.event.inputs.version }}) for detailed changes.
+            See the [full changelog](https://github.com/${{ github.repository }}/commits/${{ steps.normalize_version.outputs.normalized_version }}) for detailed changes.
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
 
       - name: Update version in files
         run: |
           # Update version in README or other files if needed
-          echo "Version v${{ github.event.inputs.version }} released successfully!"
+          echo "Version ${{ steps.normalize_version.outputs.normalized_version }} released successfully!"
           echo "Release URL: ${{ steps.create_release.outputs.upload_url }}"
 
       - name: Set up Docker Buildx
@@ -139,7 +162,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=v${{ github.event.inputs.version }}
+            type=raw,value=${{ steps.normalize_version.outputs.normalized_version }}
             type=raw,value=latest
 
       - name: Build and push TLDraw image
@@ -205,6 +228,6 @@ jobs:
       - name: Notify success
         if: success()
         run: |
-          echo "🎉 Release v${{ github.event.inputs.version }} created successfully!"
+          echo "🎉 Release ${{ steps.normalize_version.outputs.normalized_version }} created successfully!"
           echo "📦 Docker images built and pushed: ${{ steps.meta.outputs.tags }}"
           echo "🔗 Release URL: ${{ steps.create_release.outputs.html_url }}" 
