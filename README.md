@@ -54,6 +54,44 @@ The `manage-config.sh` script handles most operations:
 ./manage-config.sh rebuild    # Rebuild containers
 ```
 
+## HTTPS Support
+
+### Quick HTTPS Setup
+
+Enable HTTPS with a self-signed certificate:
+
+```bash
+./manage-config.sh setup-ssl
+./manage-config.sh restart
+```
+
+Access via: https://localhost (HTTP will redirect to HTTPS)
+
+### Custom Certificate
+
+Use your own SSL certificate:
+
+```bash
+./manage-config.sh setup-ssl-custom /path/to/cert.pem /path/to/key.pem
+./manage-config.sh restart
+```
+
+### Disable HTTPS
+
+Return to HTTP-only mode:
+
+```bash
+./manage-config.sh disable-ssl
+./manage-config.sh restart
+```
+
+### HTTPS Features
+
+- **HTTP → HTTPS Redirect** - All HTTP traffic redirects to HTTPS
+- **Security Headers** - HSTS, X-Frame-Options, CSP, etc.
+- **Modern TLS** - TLS 1.2/1.3 with secure cipher suites
+- **Certificate Management** - Automatic generation or custom certificates
+
 ## Configuration
 
 ### Environment Variables

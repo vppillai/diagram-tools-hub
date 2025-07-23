@@ -44,18 +44,24 @@ show_help() {
     echo "Configuration Commands:"
     echo "  show                    Show current configuration"
     echo ""
+    echo "SSL/TLS Commands:"
+    echo "  setup-ssl [DOMAIN]      Setup SSL with self-signed certificate"
+    echo "  setup-ssl-custom CERT KEY  Use custom certificate files"
+    echo "  disable-ssl             Disable HTTPS and use HTTP only"
+    echo ""
     echo "Maintenance Commands:"
     echo "  prune                   Remove unused Docker resources"
     echo "  backup-config           Backup current configuration"
     echo "  restore-config [FILE]   Restore configuration from backup"
     echo ""
     echo "Examples:"
-    echo "  $0 start               # Start all services"
-    echo "  $0 stop                # Stop all services"
-    echo "  $0 rebuild             # Rebuild and restart all services"
-    echo "  $0 clean-rebuild       # Clean everything and rebuild from scratch"
-    echo "  $0 logs tldraw         # Show tldraw logs"
-    echo "  $0 status              # Show container status"
+    echo "  $0 start                        # Start all services"
+    echo "  $0 setup-ssl localhost          # Setup SSL for localhost"
+    echo "  $0 setup-ssl-custom cert.pem key.pem  # Use custom certificates"
+    echo "  $0 disable-ssl                  # Disable HTTPS"
+    echo "  $0 rebuild                       # Rebuild and restart all services"
+    echo "  $0 logs tldraw                  # Show tldraw logs"
+    echo "  $0 status                       # Show container status"
     echo ""
     echo "Note: TLDraw debug panel can be enabled in the app preferences menu."
 }
@@ -79,6 +85,20 @@ start_services() {
     log_info "Starting all services..."
     sudo docker compose up -d
     log_success "All services started successfully!"
+    
+    # Check if HTTPS is configured
+    if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+        log_info "HTTPS is configured. Services available at:"
+        log_info "  🔒 https://localhost (Main hub)"
+        log_info "  🔄 http://localhost -> redirects to HTTPS"
+        log_warning "If using self-signed certificates, accept the browser security warning."
+    else
+        log_info "Services available at:"
+        log_info "  🌐 http://localhost:8080 (Main hub)"
+        log_info ""
+        log_info "💡 To enable HTTPS, run: $0 setup-ssl"
+    fi
+    
     show_status
 }
 
@@ -175,6 +195,389 @@ show_logs() {
     fi
 }
 
+setup_ssl() {
+    local domain="${2:-localhost}"
+    local cert_dir="./certs"
+    
+    log_info "Setting up SSL for domain: $domain"
+    
+    # Create certificates directory
+    mkdir -p "$cert_dir"
+    
+    # Check if certificates already exist
+    if [ -f "$cert_dir/cert.pem" ] && [ -f "$cert_dir/key.pem" ]; then
+        log_warning "SSL certificates already exist."
+        read -p "Do you want to regenerate them? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Using existing certificates."
+            enable_https_config
+            return
+        fi
+    fi
+    
+    log_info "Generating self-signed SSL certificate for $domain..."
+    
+    # Generate private key
+    openssl genrsa -out "$cert_dir/key.pem" 2048
+    
+    # Generate certificate
+    openssl req -new -x509 -key "$cert_dir/key.pem" -out "$cert_dir/cert.pem" -days 365 \
+        -subj "/C=US/ST=Local/L=Local/O=Diagram Tools Hub/OU=IT/CN=$domain" \
+        -extensions v3_req \
+        -config <(echo "
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C=US
+ST=Local
+L=Local
+O=Diagram Tools Hub
+OU=IT
+CN=$domain
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = $domain
+DNS.2 = *.${domain}
+DNS.3 = localhost
+IP.1 = 127.0.0.1
+IP.2 = ::1
+") 2>/dev/null || openssl req -new -x509 -key "$cert_dir/key.pem" -out "$cert_dir/cert.pem" -days 365 \
+        -subj "/C=US/ST=Local/L=Local/O=Diagram Tools Hub/OU=IT/CN=$domain"
+    
+    # Set proper permissions
+    chmod 600 "$cert_dir/key.pem"
+    chmod 644 "$cert_dir/cert.pem"
+    
+    log_success "SSL certificate generated successfully!"
+    log_info "Certificate: $cert_dir/cert.pem"
+    log_info "Private Key: $cert_dir/key.pem"
+    log_info "Valid for: 365 days"
+    
+    enable_https_config
+}
+
+setup_ssl_custom() {
+    local cert_file="$2"
+    local key_file="$3"
+    local cert_dir="./certs"
+    
+    if [ -z "$cert_file" ] || [ -z "$key_file" ]; then
+        log_error "Please provide both certificate and key files"
+        echo "Usage: $0 setup-ssl-custom <cert-file> <key-file>"
+        exit 1
+    fi
+    
+    if [ ! -f "$cert_file" ]; then
+        log_error "Certificate file not found: $cert_file"
+        exit 1
+    fi
+    
+    if [ ! -f "$key_file" ]; then
+        log_error "Key file not found: $key_file"
+        exit 1
+    fi
+    
+    log_info "Setting up SSL with custom certificates..."
+    
+    # Create certificates directory
+    mkdir -p "$cert_dir"
+    
+    # Copy certificate files
+    cp "$cert_file" "$cert_dir/cert.pem"
+    cp "$key_file" "$cert_dir/key.pem"
+    
+    # Set proper permissions
+    chmod 600 "$cert_dir/key.pem"
+    chmod 644 "$cert_dir/cert.pem"
+    
+    log_success "Custom SSL certificates installed successfully!"
+    
+    enable_https_config
+}
+
+enable_https_config() {
+    log_info "Enabling HTTPS configuration..."
+    
+    # Create or update nginx configuration for HTTPS
+    create_https_nginx_config
+    
+    # Update docker-compose for HTTPS
+    update_docker_compose_https
+    
+    log_success "HTTPS configuration enabled!"
+    log_info "Services will be available at:"
+    log_info "  - https://localhost (Main hub)"
+    log_info "  - http://localhost -> redirects to HTTPS"
+    log_warning "If using self-signed certificates, you'll need to accept the security warning in your browser."
+}
+
+disable_ssl() {
+    log_info "Disabling SSL and reverting to HTTP..."
+    
+    # Restore original nginx configuration
+    if [ -f "./engine/nginx.conf.backup" ]; then
+        cp "./engine/nginx.conf.backup" "./engine/nginx.conf"
+        log_info "Restored original nginx configuration"
+    else
+        log_warning "No backup nginx configuration found. Using current configuration."
+    fi
+    
+    # Restore original docker-compose configuration
+    if [ -f "./docker-compose.yml.backup" ]; then
+        cp "./docker-compose.yml.backup" "./docker-compose.yml"
+        log_info "Restored original docker-compose configuration"
+    else
+        log_warning "No backup docker-compose configuration found. Using current configuration."
+    fi
+    
+    log_success "SSL disabled successfully!"
+    log_info "Services will be available at:"
+    log_info "  - http://localhost:8080 (Main hub)"
+}
+
+create_https_nginx_config() {
+    local nginx_conf="./engine/nginx.conf"
+    
+    # Backup original configuration
+    if [ ! -f "$nginx_conf.backup" ]; then
+        cp "$nginx_conf" "$nginx_conf.backup"
+        log_info "Backed up original nginx configuration"
+    fi
+    
+    # Create HTTPS nginx configuration
+    cat > "$nginx_conf" << 'EOF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # SSL Configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    upstream drawio_backend {
+        server drawio:8080;
+    }
+
+    upstream excalidraw_backend {
+        server excalidraw:80;
+    }
+
+    upstream tldraw_backend {
+        server tldraw:3000;
+    }
+
+    # HTTP to HTTPS redirect
+    server {
+        listen 80;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    # HTTPS server
+    server {
+        listen 443 ssl http2;
+        server_name _;
+
+        # SSL certificates
+        ssl_certificate /etc/ssl/certs/cert.pem;
+        ssl_certificate_key /etc/ssl/private/key.pem;
+
+        # Security headers
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Frame-Options DENY always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        # Main landing page
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+
+        # Draw.io reverse proxy
+        location /drawio {
+            return 301 /drawio/;
+        }
+
+        location /drawio/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # Excalidraw reverse proxy
+        location /excalidraw {
+            return 301 /excalidraw/;
+        }
+
+        location /excalidraw/ {
+            proxy_pass http://excalidraw_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # Handle Excalidraw assets that are requested from root
+        location ~ ^/(assets|manifest\.webmanifest) {
+            proxy_pass http://excalidraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # TLDraw reverse proxy
+        location /tldraw {
+            return 301 /tldraw/;
+        }
+
+        location /tldraw/ {
+            proxy_pass http://tldraw_backend/tldraw/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # Handle TLDraw assets with correct MIME types
+        location ~ ^/tldraw/.*\.(js|jsx)$ {
+            proxy_pass http://tldraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            add_header Content-Type application/javascript;
+        }
+
+        # Handle TLDraw CSS files
+        location ~ ^/tldraw/.*\.css$ {
+            proxy_pass http://tldraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            add_header Content-Type text/css;
+        }
+
+        # Handle favicon.ico requests
+        location = /favicon.ico {
+            return 204;
+            add_header Content-Type image/x-icon;
+        }
+
+        # Health check endpoint
+        location /health {
+            return 200 "OK\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}
+EOF
+
+    log_info "Created HTTPS nginx configuration"
+}
+
+update_docker_compose_https() {
+    local compose_file="./docker-compose.yml"
+    
+    # Backup original configuration
+    if [ ! -f "$compose_file.backup" ]; then
+        cp "$compose_file" "$compose_file.backup"
+        log_info "Backed up original docker-compose configuration"
+    fi
+    
+    # Create HTTPS docker-compose configuration
+    cat > "$compose_file" << 'EOF'
+services:
+  # Engine server - Nginx with HTTPS support
+  engine:
+    image: nginx:alpine
+    container_name: diagram-engine
+    ports:
+      - "80:80"    # HTTP (redirects to HTTPS)
+      - "443:443"  # HTTPS
+    volumes:
+      - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./engine/html:/usr/share/nginx/html:ro
+      - ./certs/cert.pem:/etc/ssl/certs/cert.pem:ro
+      - ./certs/key.pem:/etc/ssl/private/key.pem:ro
+    depends_on:
+      - drawio
+      - excalidraw
+      - tldraw
+    restart: unless-stopped
+
+  # Draw.io container
+  drawio:
+    image: jgraph/drawio
+    container_name: drawio-app
+    ports:
+      - "8081:8080"
+    environment:
+      - DRAWIO_BASE_URL=/drawio
+    restart: unless-stopped
+
+  # Excalidraw container
+  excalidraw:
+    image: excalidraw/excalidraw:latest
+    container_name: excalidraw-app
+    ports:
+      - "8082:80"
+    restart: unless-stopped
+
+  # TLDraw container - using a custom build since there's no official image
+  tldraw:
+    build:
+      context: ./tldraw
+      dockerfile: Dockerfile
+    container_name: tldraw-app
+    ports:
+      - "8083:3000"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: diagram-tools-network
+EOF
+
+    log_info "Updated docker-compose configuration for HTTPS"
+}
+
 
 
 prune_docker() {
@@ -266,6 +669,15 @@ case "$1" in
         ;;
     show)
         show_config
+        ;;
+    setup-ssl)
+        setup_ssl "$@"
+        ;;
+    setup-ssl-custom)
+        setup_ssl_custom "$@"
+        ;;
+    disable-ssl)
+        disable_ssl
         ;;
     prune)
         prune_docker
