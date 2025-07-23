@@ -197,23 +197,15 @@ TLDRAW_DEBUG_PANEL=false
 NODE_ENV=production
 ENABLE_ANALYTICS=false
 ENABLE_TELEMETRY=false
-
-# Vite Development Server (TLDraw)
-VITE_ALLOWED_HOSTS=draw.embeddedinn.ca,localhost,127.0.0.1
 ```
 
 ### Vite Development Server Configuration
 
-The TLDraw application uses Vite as its development server. To allow access from specific hostnames, configure the `VITE_ALLOWED_HOSTS` environment variable:
+The TLDraw application uses Vite as its development server. The configuration allows access from all hostnames by default to prevent "Blocked request" errors.
 
-```bash
-# Comma-separated list of allowed hostnames
-VITE_ALLOWED_HOSTS=draw.embeddedinn.ca,localhost,127.0.0.1,your-domain.com
-```
+**Current configuration**: `allowedHosts: true` (allows all hostnames)
 
-**Default allowed hosts**: `localhost`, `127.0.0.1`
-
-**Note**: If you encounter "Blocked request" errors when accessing the development server from external hostnames, add the hostname to this list.
+**Note**: If you need to restrict access to specific hostnames only, you can modify the `tldraw/vite.config.js` file and change `allowedHosts: true` to an array of allowed hostnames like `['localhost', '127.0.0.1', 'your-domain.com']`.
 
 ### Custom Ports
 
