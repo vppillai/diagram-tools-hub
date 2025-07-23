@@ -45,18 +45,6 @@ jobs:
           args: --severity-threshold=high
           working-directory: ./tldraw
 
-      - name: Skip Snyk scan (no token)
-        if: secrets.SNYK_TOKEN == ''
-        run: |
-          echo "⚠️  SNYK_TOKEN not set, skipping Snyk security scan"
-          echo "To enable Snyk scanning, add SNYK_TOKEN to repository secrets"
-
-      - name: Run OWASP ZAP scan (skip in CI)
-        run: |
-          echo "⚠️  OWASP ZAP scan skipped in CI environment"
-          echo "ZAP requires a running application to scan"
-          echo "Consider running ZAP locally or in a deployment environment"
-
       - name: Check for secrets in code
         uses: trufflesecurity/trufflehog@main
         with:
@@ -69,19 +57,7 @@ jobs:
           pip install bandit
           bandit -r . -f json -o bandit-report.json || true
 
-      - name: Scan Docker images for vulnerabilities
-        run: |
-          echo "🔍 Scanning Docker images for vulnerabilities..."
-          # Scan the Dockerfiles for known vulnerabilities
-          if [ -f "./tldraw/Dockerfile" ]; then
-            echo "Scanning TLDraw Dockerfile..."
-            # This would typically use a tool like hadolint
-            echo "✅ TLDraw Dockerfile scan completed"
-          fi
-          if [ -f "./engine/Dockerfile" ]; then
-            echo "Scanning Engine Dockerfile..."
-            echo "✅ Engine Dockerfile scan completed"
-          fi
+
 
       - name: Comment security findings
         if: github.event_name == 'pull_request'
