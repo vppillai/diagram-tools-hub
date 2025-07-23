@@ -37,20 +37,29 @@ jobs:
           category: 'Trivy Security Scan'
 
       - name: Run Snyk security scan
+        working-directory: ./tldraw
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high
-          working-directory: ./tldraw
         continue-on-error: true
 
       - name: Check for secrets in code
+        if: github.event_name == 'push'
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: HEAD
-          head: HEAD
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
+
+      - name: Check for secrets in code (PR)
+        if: github.event_name == 'pull_request'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
 
       - name: Run Bandit security linter
         run: |
