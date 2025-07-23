@@ -60,6 +60,7 @@ show_help() {
     echo "Configuration Commands:"
     echo "  show                    Show current configuration"
     echo "  http-only               Disable HTTPS and use HTTP only"
+    echo "  cleanup                 Remove conflicting containers and networks"
     echo ""
     echo "Maintenance Commands:"
     echo "  prune                   Remove unused Docker resources"
@@ -102,6 +103,13 @@ start_services() {
     setup_ssl_auto "$cert_file" "$key_file"
     
     log_info "Starting all services..."
+    
+    # Stop any existing containers first to avoid conflicts
+    sudo docker compose down 2>/dev/null || true
+    
+    # Ensure docker-compose.yml uses environment variables
+    ensure_env_variables_in_compose
+    
     sudo docker compose up -d
     log_success "All services started successfully!"
     
@@ -143,6 +151,9 @@ restart_services() {
     # Handle SSL setup automatically
     setup_ssl_auto "$cert_file" "$key_file"
     
+    # Ensure docker-compose.yml uses environment variables
+    ensure_env_variables_in_compose
+    
     sudo docker compose up -d
     log_success "All services restarted successfully!"
     
@@ -177,6 +188,9 @@ rebuild_services() {
     
     # Handle SSL setup automatically
     setup_ssl_auto "$cert_file" "$key_file"
+    
+    # Ensure docker-compose.yml uses environment variables
+    ensure_env_variables_in_compose
     
     sudo docker compose build --no-cache
     sudo docker compose up -d
@@ -361,6 +375,9 @@ IP.2 = ::1
     
     # Always ensure HTTPS configuration is enabled
     enable_https_config
+    
+    # Force reload environment variables in case they changed
+    load_env
 }
 
 enable_https_config() {
@@ -408,6 +425,25 @@ http_only() {
     log_success "Switched to HTTP-only mode successfully!"
     log_info "Services available at:"
     log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+}
+
+cleanup_containers() {
+    log_info "Cleaning up conflicting containers and networks..."
+    
+    # Stop and remove containers
+    sudo docker compose down --remove-orphans 2>/dev/null || true
+    
+    # Remove specific containers that might conflict
+    sudo docker rm -f diagram-engine drawio-app excalidraw-app tldraw-app 2>/dev/null || true
+    
+    # Remove networks that might conflict
+    sudo docker network rm diagram-tools-network 2>/dev/null || true
+    
+    # Clean up any dangling resources
+    sudo docker container prune -f 2>/dev/null || true
+    sudo docker network prune -f 2>/dev/null || true
+    
+    log_success "Cleanup completed! You can now start services normally."
 }
 
 create_https_nginx_config() {
@@ -837,6 +873,21 @@ EOF
     log_info "Created HTTP-only docker-compose configuration"
 }
 
+ensure_env_variables_in_compose() {
+    local compose_file="./docker-compose.yml"
+    
+    # Check if docker-compose.yml uses hardcoded ports and fix them
+    if grep -q '"80:80"' "$compose_file" || grep -q '"443:443"' "$compose_file"; then
+        log_info "Updating docker-compose.yml to use environment variables..."
+        
+        # Update hardcoded ports to use environment variables
+        sed -i 's/"80:80"/"${HTTP_REDIRECT_PORT:-80}:80"/g' "$compose_file"
+        sed -i 's/"443:443"/"${HTTPS_PORT:-443}:443"/g' "$compose_file"
+        
+        log_info "Docker-compose.yml updated to use configurable ports"
+    fi
+}
+
 
 
 prune_docker() {
@@ -931,6 +982,9 @@ case "$1" in
         ;;
     http-only)
         http_only
+        ;;
+    cleanup)
+        cleanup_containers
         ;;
     prune)
         prune_docker
