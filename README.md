@@ -1,201 +1,159 @@
 # Diagram Tools Hub
 
-A Docker Compose setup that provides a unified interface for three popular diagramming and drawing tools:
-- **Draw.io** - Professional diagramming tool
-- **Excalidraw** - Virtual whiteboard for hand-drawn diagrams
-- **tldraw** - Simple collaborative drawing tool
+[![CI/CD Pipeline](https://github.com/vppillai/diagram-tools-hub/workflows/CI/CD%20Pipeline/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/ci-cd.yml)
+[![Security Scan](https://github.com/vppillai/diagram-tools-hub/workflows/Security%20Scan/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/security.yml)
+[![Release Management](https://github.com/vppillai/diagram-tools-hub/workflows/🚀%20Release%20Management/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/release.yml)
 
-## 🚀 Quick Start
+A unified Docker setup that brings together three powerful diagramming tools under one roof:
+- **Draw.io** - Professional diagrams and flowcharts
+- **Excalidraw** - Hand-drawn style diagrams and wireframes  
+- **TLDraw** - Modern collaborative drawing canvas
 
-1. Clone this repository:
+## Quick Start
+
+Clone and run:
+
 ```bash
-git clone <your-repo-url>
-cd drawApp
+git clone https://github.com/vppillai/diagram-tools-hub.git
+cd diagram-tools-hub
+./manage-config.sh start
 ```
 
-2. Configure the application (optional):
+Then open http://localhost:8080 in your browser.
+
+## What's Included
+
+- **Unified Dashboard** - Single page to access all tools
+- **Direct Links** - Each tool available at its own path
+- **Real-time Status** - See which tools are online
+- **Easy Management** - Simple scripts to start/stop/restart
+
+## Access Points
+
+- **Main Hub**: http://localhost:8080
+- **Draw.io**: http://localhost:8080/drawio/
+- **Excalidraw**: http://localhost:8080/excalidraw/
+- **TLDraw**: http://localhost:8080/tldraw/
+
+## Requirements
+
+- Docker & Docker Compose
+- 2GB+ RAM
+- Port 8080 available
+
+## Management
+
+The `manage-config.sh` script handles most operations:
+
 ```bash
-cp .env.example .env
-# Edit .env to customize settings
+./manage-config.sh start      # Start all services
+./manage-config.sh stop       # Stop all services  
+./manage-config.sh restart    # Restart everything
+./manage-config.sh status     # Check service status
+./manage-config.sh logs       # View logs
+./manage-config.sh rebuild    # Rebuild containers
 ```
 
-3. Start all services:
-```bash
-docker-compose up -d
-```
-
-4. Access the tools:
-   - **Unified Interface**: http://localhost:8080
-   - **Draw.io Direct**: http://localhost:8080/drawio/
-   - **Excalidraw Direct**: http://localhost:8080/excalidraw/
-   - **tldraw Direct**: http://localhost:8080/tldraw/
-
-## 📋 Prerequisites
-
-- Docker Engine 20.10.0 or later
-- Docker Compose 1.29.0 or later
-- At least 2GB of available RAM
-- Ports 8080-8083 available on your host
-
-## 🏗️ Architecture
-
-The setup consists of:
-1. **Nginx Engine Server** (Port 8080) - Serves the unified interface and reverse proxies to tools
-2. **Draw.io Container** (Internal port 8081)
-3. **Excalidraw Container** (Internal port 8082)
-4. **tldraw Container** (Internal port 8083)
-
-## 📁 Project Structure
-
-```
-drawApp/
-├── docker-compose.yml        # Docker Compose configuration
-├── engine/
-│   ├── nginx.conf           # Nginx reverse proxy configuration
-│   └── html/
-│       └── index.html       # Unified interface landing page
-├── tldraw/
-│   └── Dockerfile           # Custom build for tldraw
-└── README.md               # This file
-```
-
-## 🛠️ Configuration
+## Configuration
 
 ### Environment Variables
 
-The application supports configuration through environment variables in the `.env` file:
-
-#### TLDraw Settings
-- `TLDRAW_DEBUG_PANEL`: Enable/disable the debug panel in tldraw (default: `false`)
-
-#### Development Settings
-- `NODE_ENV`: Environment mode (default: `production`)
-- `ENABLE_ANALYTICS`: Enable analytics tracking (default: `false`)
-- `ENABLE_TELEMETRY`: Enable telemetry collection (default: `false`)
-
-### Quick Configuration Management
-
-Use the provided management script for easy configuration:
+Create a `.env` file to customize settings:
 
 ```bash
-# Show current configuration
-./manage-config.sh show
+# TLDraw settings
+TLDRAW_DEBUG_PANEL=false
 
-# Enable tldraw debug panel
-./manage-config.sh enable-debug
-
-# Disable tldraw debug panel  
-./manage-config.sh disable-debug
-
-# Restart all services
-./manage-config.sh restart
+# Development settings  
+NODE_ENV=production
+ENABLE_ANALYTICS=false
+ENABLE_TELEMETRY=false
 ```
 
-### Changing Ports
+### Custom Ports
 
-Edit `docker-compose.yml` to modify the exposed ports:
+Edit `docker-compose.yml` to change the port:
 
 ```yaml
 services:
   engine:
     ports:
-      - "8080:80"  # Change 8080 to your desired port
+      - "9000:80"  # Change 8080 to your preferred port
 ```
 
-### Custom Domain
+## Architecture
 
-To use a custom domain, update the `server_name` in `engine/nginx.conf`:
+- **Engine** (Nginx) - Serves the dashboard and routes traffic
+- **Draw.io** - Professional diagramming tool
+- **Excalidraw** - Hand-drawn style diagrams
+- **TLDraw** - Modern collaborative canvas
 
-```nginx
-server_name your-domain.com;
-```
+## Troubleshooting
 
-## 🔧 Management Commands
+### Services won't start
 
-### Start all services
-```bash
-docker-compose up -d
-```
-
-### Stop all services
-```bash
-docker-compose down
-```
-
-### View logs
-```bash
-# All services
-docker-compose logs -f
-
-# Specific service
-docker-compose logs -f engine
-docker-compose logs -f drawio
-docker-compose logs -f excalidraw
-docker-compose logs -f tldraw
-```
-
-### Restart a specific service
-```bash
-docker-compose restart drawio
-```
-
-### Update services
-```bash
-docker-compose pull
-docker-compose up -d --build
-```
-
-## 🌐 Features
-
-- **Unified Interface**: Beautiful landing page with quick access to all tools
-- **Direct Access**: Each tool accessible via its own path
-- **Service Status**: Real-time status monitoring of all tools
-- **Responsive Design**: Works on desktop and mobile devices
-- **WebSocket Support**: Full support for real-time collaboration features
-
-## 🐛 Troubleshooting
-
-### Services not starting
-
-1. Check if ports are already in use:
+Check if ports are in use:
 ```bash
 lsof -i :8080-8083
 ```
 
-2. View container logs:
+### View logs
+
 ```bash
-docker-compose logs
+./manage-config.sh logs
+# or
+docker-compose logs -f
 ```
 
-### tldraw build fails
+### Rebuild containers
 
-The tldraw container builds from source. If it fails:
+```bash
+./manage-config.sh rebuild
+```
 
-1. Check internet connectivity
-2. Ensure you have enough disk space
-3. Try building with no cache:
+### TLDraw build issues
+
+TLDraw builds from source. If it fails:
+
 ```bash
 docker-compose build --no-cache tldraw
 ```
 
-### Nginx 502 Bad Gateway
+## Development
 
-This usually means a backend service isn't ready yet. Wait a few moments for all services to start, or check the specific service logs.
+### Local development
 
-## 📝 Notes
+```bash
+# Start with development settings
+NODE_ENV=development docker-compose up -d
 
-- Draw.io and Excalidraw use official Docker images
-- tldraw is built from source as there's no official Docker image
-- All data is stored in browser local storage by default
-- For persistent storage, you'll need to configure volumes for each tool
+# View logs
+docker-compose logs -f tldraw
+```
 
-## 🤝 Contributing
+### Adding new tools
 
-Feel free to submit issues and enhancement requests!
+1. Add service to `docker-compose.yml`
+2. Update `engine/nginx.conf` with proxy rules
+3. Add tool card to `engine/html/index.html`
 
-## 📄 License
+## Releases
 
-This Docker setup is provided as-is. The individual tools have their own licenses:
-- Draw.io: Apache License 2.0
-- Excalidraw: MIT License
-- tldraw: Apache License 2.0 
+Docker images are automatically built and published on releases:
+
+```bash
+# Pull latest images
+docker pull ghcr.io/vppillai/diagram-tools-hub/tldraw:latest
+docker pull ghcr.io/vppillai/diagram-tools-hub/engine:latest
+```
+
+## Contributing
+
+Found a bug or have an idea? Open an issue or submit a PR!
+
+## License
+
+This project is open source. The individual tools have their own licenses:
+- Draw.io: Apache 2.0
+- Excalidraw: MIT  
+- TLDraw: Apache 2.0 
