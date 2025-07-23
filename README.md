@@ -56,41 +56,41 @@ The `manage-config.sh` script handles most operations:
 
 ## HTTPS Support
 
-### Quick HTTPS Setup
+### Automatic HTTPS
 
-Enable HTTPS with a self-signed certificate:
+HTTPS is enabled by default with auto-generated self-signed certificates:
 
 ```bash
-./manage-config.sh setup-ssl
-./manage-config.sh restart
+./manage-config.sh start
+# Automatically generates SSL certificates and starts with HTTPS
+# Access: https://localhost (HTTP redirects to HTTPS)
 ```
-
-Access via: https://localhost (HTTP will redirect to HTTPS)
 
 ### Custom Certificate
 
 Use your own SSL certificate:
 
 ```bash
-./manage-config.sh setup-ssl-custom /path/to/cert.pem /path/to/key.pem
-./manage-config.sh restart
+./manage-config.sh start /path/to/cert.pem /path/to/key.pem
+# Uses your custom certificates
 ```
 
-### Disable HTTPS
+### HTTP-Only Mode
 
-Return to HTTP-only mode:
+Switch to HTTP-only (no SSL):
 
 ```bash
-./manage-config.sh disable-ssl
-./manage-config.sh restart
+./manage-config.sh http-only
+# Switches to HTTP-only mode on port 8080
 ```
 
 ### HTTPS Features
 
+- **Automatic Setup** - SSL certificates generated automatically if not present
 - **HTTP → HTTPS Redirect** - All HTTP traffic redirects to HTTPS
 - **Security Headers** - HSTS, X-Frame-Options, CSP, etc.
 - **Modern TLS** - TLS 1.2/1.3 with secure cipher suites
-- **Certificate Management** - Automatic generation or custom certificates
+- **Flexible** - Use custom certificates or auto-generated ones
 
 ## Configuration
 
