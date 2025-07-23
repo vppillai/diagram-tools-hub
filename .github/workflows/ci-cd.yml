@@ -45,10 +45,40 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and test Engine (Frontend)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./engine
+          file: ./engine/Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/engine:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Test Docker Compose
         run: |
           docker compose config
           echo "✅ Docker Compose configuration is valid"
+
+      - name: Test container startup
+        run: |
+          echo "🧪 Testing container startup..."
+          
+          # Test TLDraw container startup
+          echo "Testing TLDraw container..."
+          docker run --rm -d --name tldraw-test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/tldraw:test
+          sleep 5
+          docker ps | grep tldraw-test || echo "❌ TLDraw container failed to start"
+          docker stop tldraw-test
+          
+          # Test Engine container startup
+          echo "Testing Engine container..."
+          docker run --rm -d --name engine-test -p 8080:80 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/engine:test
+          sleep 5
+          docker ps | grep engine-test || echo "❌ Engine container failed to start"
+          docker stop engine-test
+          
+          echo "✅ All containers started successfully"
 
       - name: Run security scan
         uses: aquasecurity/trivy-action@master
