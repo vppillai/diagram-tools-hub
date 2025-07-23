@@ -330,7 +330,7 @@ setup_ssl_auto() {
         
         # Generate certificate
         openssl req -new -x509 -key "$cert_dir/key.pem" -out "$cert_dir/cert.pem" -days 365 \
-            -subj "/C=US/ST=Local/L=Local/O=Diagram Tools Hub/OU=IT/CN=$domain" \
+            -subj "/C=CA/ST=Local/L=Local/O=Diagram Tools Hub/OU=IT/CN=$domain" \
             -extensions v3_req \
             -config <(echo "
 [req]
@@ -339,7 +339,7 @@ x509_extensions = v3_req
 prompt = no
 
 [req_distinguished_name]
-C=US
+C=CA
 ST=Local
 L=Local
 O=Diagram Tools Hub
@@ -358,7 +358,7 @@ DNS.3 = localhost
 IP.1 = 127.0.0.1
 IP.2 = ::1
 ") 2>/dev/null || openssl req -new -x509 -key "$cert_dir/key.pem" -out "$cert_dir/cert.pem" -days 365 \
-            -subj "/C=US/ST=Local/L=Local/O=Diagram Tools Hub/OU=IT/CN=$domain" 2>/dev/null
+            -subj "/C=CA/ST=Local/L=Local/O=Diagram Tools Hub/OU=IT/CN=$domain" 2>/dev/null
         
         # Set proper permissions
         chmod 600 "$cert_dir/key.pem"

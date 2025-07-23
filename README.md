@@ -66,6 +66,13 @@ HTTPS is enabled by default with auto-generated self-signed certificates:
 # Access: https://localhost (HTTP redirects to HTTPS)
 ```
 
+The system automatically:
+- Generates RSA 2048-bit private keys
+- Creates X.509 certificates valid for 365 days
+- Uses Canada (CA) as the certificate country
+- Includes Subject Alternative Names (SAN) for localhost and IP addresses
+- Sets proper file permissions (600 for keys, 644 for certificates)
+
 ### Custom Certificate
 
 Use your own SSL certificate:
@@ -75,22 +82,42 @@ Use your own SSL certificate:
 # Uses your custom certificates
 ```
 
+Custom certificates are copied to `./certs/` directory and configured automatically.
+
 ### HTTP-Only Mode
 
 Switch to HTTP-only (no SSL):
 
 ```bash
 ./manage-config.sh http-only
-# Switches to HTTP-only mode on port 8080
+# Switches to HTTP-only mode on configured HTTP_PORT
+```
+
+### Certificate Details
+
+#### Auto-Generated Certificates:
+- **Country**: CA (Canada)
+- **Organization**: Diagram Tools Hub
+- **Validity**: 365 days
+- **Key Size**: RSA 2048-bit
+- **Extensions**: Subject Alternative Names for localhost, *.localhost, 127.0.0.1, ::1
+- **Location**: `./certs/cert.pem` and `./certs/key.pem`
+
+#### Certificate Configuration:
+The SSL domain can be configured in `.env`:
+```bash
+SSL_DOMAIN=your-domain.com
 ```
 
 ### HTTPS Features
 
 - **Automatic Setup** - SSL certificates generated automatically if not present
-- **HTTP → HTTPS Redirect** - All HTTP traffic redirects to HTTPS
-- **Security Headers** - HSTS, X-Frame-Options, CSP, etc.
+- **HTTP → HTTPS Redirect** - All HTTP traffic redirects to HTTPS  
+- **Security Headers** - HSTS, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
 - **Modern TLS** - TLS 1.2/1.3 with secure cipher suites
-- **Flexible** - Use custom certificates or auto-generated ones
+- **Configurable Ports** - HTTPS_PORT and HTTP_REDIRECT_PORT via .env
+- **Certificate Management** - Auto-generation, custom certificates, or HTTP-only mode
+- **Browser Compatibility** - Works with all modern browsers (accept security warning for self-signed)
 
 ## Configuration
 
@@ -154,6 +181,39 @@ lsof -i :8080-8083
 ./manage-config.sh logs
 # or
 docker-compose logs -f
+```
+
+### HTTPS Issues
+
+**Browser security warning:**
+```bash
+# Normal for self-signed certificates
+# Click "Advanced" → "Proceed to localhost"
+```
+
+**Port conflicts:**
+```bash
+# Check what's using your ports
+sudo lsof -i :80
+sudo lsof -i :443
+
+# Use custom ports in .env
+HTTPS_PORT=8443
+HTTP_REDIRECT_PORT=8080
+```
+
+**Certificate regeneration:**
+```bash
+# Remove existing certificates to regenerate
+rm -rf ./certs/
+./manage-config.sh restart
+```
+
+**Container conflicts:**
+```bash
+# Clean up conflicting containers
+./manage-config.sh cleanup
+./manage-config.sh start
 ```
 
 ### Rebuild containers
