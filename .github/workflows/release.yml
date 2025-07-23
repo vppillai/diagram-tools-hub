@@ -1,4 +1,4 @@
-name: Release Management
+name: "🚀 Release Management"
 
 on:
   workflow_dispatch:
