@@ -16,18 +16,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Security scanning with Trivy
 - ✅ Staging and production deployment hooks
 
-### 2. Docker Release Build (`docker-release.yml`)
-
-**Triggers:**
-- Tag push (e.g., `git tag v1.0.0 && git push origin v1.0.0`)
-
-**Features:**
-- ✅ Build and push Docker images to GitHub Container Registry (tag only)
-- ✅ Automatic tagging with version numbers
-- ✅ Update release notes with Docker image references
-- ✅ Clean container registry (no non-release images)
-
-### 3. Release Management (`release.yml`)
+### 2. Release Management (`release.yml`)
 
 **Manual trigger** with customizable inputs:
 - Version number (e.g., 1.0.0)
@@ -36,11 +25,12 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 
 **Features:**
 - ✅ Automated changelog generation
+- ✅ Build and push Docker images to GitHub Container Registry
 - ✅ Release notes with Docker image references
 - ✅ Quick start instructions
 - ✅ Feature highlights
 
-### 4. Dependabot Automation (`dependabot.yml`)
+### 3. Dependabot Automation (`dependabot.yml`)
 
 **Triggers:**
 - Dependabot pull requests
@@ -51,7 +41,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Automated testing
 - ✅ PR comments with status
 
-### 5. Security Scanning (`security.yml`)
+### 4. Security Scanning (`security.yml`)
 
 **Triggers:**
 - Weekly scheduled scans (Mondays at 2 AM)
@@ -82,7 +72,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 The workflow will:
 - Generate a changelog from recent commits
 - Create a GitHub release with detailed notes
-- Create a git tag (which triggers Docker image builds)
+- Build and push Docker images automatically
 - Update release notes with Docker image references
 
 ### Automatic Workflows
