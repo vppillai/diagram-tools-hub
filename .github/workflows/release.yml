@@ -69,8 +69,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.version }}
-          release_name: Release v${{ github.event.inputs.version }}
-          generate_release_notes: true
+          name: Release v${{ github.event.inputs.version }}
           body: |
             ## 🚀 Release v${{ github.event.inputs.version }}
             
@@ -168,7 +167,13 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const release = context.payload.release;
+            // Get the release that was just created
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            
+            const release = releases[0]; // Get the latest release
             const version = release.tag_name;
             const body = release.body || '';
             

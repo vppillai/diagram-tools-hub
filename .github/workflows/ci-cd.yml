@@ -104,28 +104,4 @@ jobs:
 
 
 
-  # Deploy to staging (optional)
-  deploy-staging:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-    steps:
-      - name: Deploy to staging
-        run: |
-          echo "🚀 Deploying to staging environment..."
-          echo "This would typically involve deploying to a staging server"
-          echo "You can customize this step based on your deployment needs"
-
-  # Deploy to production (optional)
-  deploy-production:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
-    environment: production
-    steps:
-      - name: Deploy to production
-        run: |
-          echo "🚀 Deploying to production environment..."
-          echo "This would typically involve deploying to your production server"
-          echo "You can customize this step based on your deployment needs" 
+ 
