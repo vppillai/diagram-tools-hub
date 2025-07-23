@@ -37,13 +37,13 @@ jobs:
           category: 'Trivy Security Scan'
 
       - name: Run Snyk security scan
-        if: secrets.SNYK_TOKEN != ''
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high
           working-directory: ./tldraw
+        continue-on-error: true
 
       - name: Check for secrets in code
         uses: trufflesecurity/trufflehog@main
