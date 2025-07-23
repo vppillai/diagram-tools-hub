@@ -69,7 +69,7 @@ jobs:
 
   # Deploy to staging (optional)
   deploy-staging:
-    needs: build-and-push
+    needs: build-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
@@ -82,7 +82,7 @@ jobs:
 
   # Deploy to production (optional)
   deploy-production:
-    needs: create-release
+    needs: build-and-test
     runs-on: ubuntu-latest
     if: github.event_name == 'release' && github.event.action == 'published'
     environment: production
