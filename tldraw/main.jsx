@@ -139,6 +139,9 @@ function App() {
 
 // Component for sync-enabled TLDraw
 function SyncTldraw({ roomId }) {
+    // Simple tab visibility tracking only
+    const [isTabActive, setIsTabActive] = React.useState(!document.hidden)
+    
     // Generate consistent user preferences for this session
     const [userPreferences, setUserPreferences] = React.useState(() => {
         // Try to get existing user data from localStorage (room-specific if in a room)
@@ -244,11 +247,28 @@ function SyncTldraw({ roomId }) {
         const storageKey = roomId ? `tldraw-user-preferences-${roomId}` : 'tldraw-user-preferences'
         localStorage.setItem(storageKey, JSON.stringify(userPreferences))
     }, [userPreferences, roomId])
+    
+    // Handle tab visibility changes only
+    React.useEffect(() => {
+        const handleVisibilityChange = () => {
+            setIsTabActive(!document.hidden)
+        }
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [])
+    
+    // No complex activity tracking - keep it simple
 
+    // Create sync store with basic tab visibility info
     const store = useSync({
         uri: getWebSocketUrl(roomId),
         assets: multiplayerAssets,
-        userInfo: userPreferences, // Pass user info for presence sync
+        userInfo: {
+            ...userPreferences,
+            // Only track tab visibility - simple and non-intrusive
+            isTabActive: isTabActive
+        },
     })
 
     // Simple debounced name update - only update state after delay
@@ -292,9 +312,9 @@ function SyncTldraw({ roomId }) {
         }
     })
 
-    // Monitor store status for debugging if needed
+    // Simple store status monitoring
     React.useEffect(() => {
-        // Store status tracking for internal use
+        // Basic connection monitoring - no complex optimizations
     }, [store?.status])
 
     return (
@@ -335,9 +355,20 @@ function SyncTldraw({ roomId }) {
                 gap: '6px'
             }}>
                 <span>Room: {roomId}</span>
-                <span style={{ color: userPreferences.color }}>({userPreferences.name})</span>
-                <span>{store?.connectionStatus === 'online' ? '🟢' : store?.connectionStatus === 'offline' ? '🔴' : store?.status === 'loading' ? '🟡' : '⚪'}</span>
+                <span style={{ 
+                    color: userPreferences.color,
+                    opacity: isTabActive ? 1 : 0.6
+                }}>
+                    ({userPreferences.name}{!isTabActive ? ' 💤' : ''})
+                </span>
+                <span>
+                    {store?.connectionStatus === 'online' ? '🟢' : 
+                     store?.connectionStatus === 'offline' ? '🔴' : 
+                     store?.status === 'loading' ? '🟡' : '⚪'}
+                </span>
+                {!isTabActive && <span title="Tab is inactive">📱</span>}
             </div>
+            
         </>
     )
 }
