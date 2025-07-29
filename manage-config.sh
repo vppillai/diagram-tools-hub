@@ -73,6 +73,13 @@ show_help() {
     echo "  backup-config           Backup current configuration"
     echo "  restore-config [FILE]   Restore configuration from backup"
     echo ""
+    echo "TLDraw Monitoring Commands:"
+    echo "  tldraw-monitor           Show comprehensive TLDraw system monitoring dashboard"
+    echo "  tldraw-rooms             Show TLDraw room statistics and collaboration usage"
+    echo "  tldraw-health            Show TLDraw sync backend health and API status"
+    echo "  system-metrics           Show detailed Docker container performance metrics"
+    echo "  system-stats             Show real-time container resource usage"
+    echo ""
     echo "Examples:"
     echo "  $0 start                        # Start with auto-generated SSL"
     echo "  $0 start cert.pem key.pem       # Start with custom certificates"
@@ -1145,6 +1152,334 @@ service_status() {
     fi
 }
 
+# Simple JSON parsing helper
+parse_json_value() {
+    local json="$1"
+    local key="$2"
+    echo "$json" | grep -o "\"$key\":[^,}]*" | cut -d':' -f2 | sed 's/^"\|"$//g'
+}
+
+# TLDraw Monitoring Functions
+show_comprehensive_tldraw_monitor() {
+    log_info "=== TLDraw Collaboration System - Monitoring Dashboard ==="
+    echo ""
+    
+    # System Info
+    echo "🖥️  System Information:"
+    echo "   Date: $(date)"
+    echo "   Uptime: $(uptime -p 2>/dev/null || uptime)"
+    echo "   Load: $(cat /proc/loadavg 2>/dev/null || echo 'N/A')"
+    echo ""
+    
+    # Docker Status
+    echo "🐳 Docker Status:"
+    if docker info >/dev/null 2>&1; then
+        echo "   ✅ Docker is running"
+        echo "   Version: $(docker --version | cut -d' ' -f3 | tr -d ',')"
+    else
+        echo "   ❌ Docker is not running"
+        return 1
+    fi
+    echo ""
+    
+    # Container Status
+    echo "📦 Container Status:"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" --filter "label=com.docker.compose.project=diagram-tools-hub"
+    echo ""
+    
+    # Resource Usage
+    echo "📊 Resource Usage:"
+    docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub")
+    echo ""
+    
+    # TLDraw Room Statistics
+    show_tldraw_room_stats
+    echo ""
+    
+    # TLDraw Health Status
+    show_tldraw_health_status
+}
+
+show_tldraw_room_stats() {
+    log_info "=== TLDraw Collaboration Room Statistics ==="
+    
+    # Get sync backend container ID
+    local sync_container=$(docker ps -q --filter "name=tldraw-sync")
+    
+    if [ -z "$sync_container" ]; then
+        log_warning "TLDraw sync backend container not found"
+        return 1
+    fi
+    
+    echo "📁 Room Storage Analysis:"
+    
+    # Use internal API call within container for detailed stats
+    local api_data=$(docker exec "$sync_container" wget -q -O - http://localhost:3001/api/rooms 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$api_data" ]; then
+        # Parse JSON data using helper function
+        local total_rooms=$(parse_json_value "$api_data" "totalRooms")
+        local active_rooms=$(parse_json_value "$api_data" "activeRooms")
+        local storage_used=$(parse_json_value "$api_data" "storageUsed")
+        
+        echo "   Total rooms: ${total_rooms:-0}"
+        echo "   Active rooms (24h): ${active_rooms:-0}"
+        if [ -n "$storage_used" ] && [ "$storage_used" -gt 0 ]; then
+            echo "   Storage used: $((storage_used / 1024)) KB"
+        else
+            echo "   Storage used: 0 KB"
+        fi
+        echo ""
+        echo "   Recent rooms:"
+        echo "$api_data" | grep -o '"name":"[^"]*"' | head -5 | cut -d'"' -f4 | sed 's/^/     - /'
+    else
+        # Fallback to direct file system analysis
+        if docker exec "$sync_container" test -d .rooms 2>/dev/null; then
+            # Count rooms
+            local room_count=$(docker exec "$sync_container" find .rooms -name "*.tldr" 2>/dev/null | wc -l)
+            echo "   Total rooms: $room_count"
+            
+            # Room sizes
+            echo "   Storage usage:"
+            docker exec "$sync_container" du -sh .rooms 2>/dev/null || echo "   Unable to calculate room storage"
+            
+            # Recent rooms (last 24 hours)
+            local recent_rooms=$(docker exec "$sync_container" find .rooms -name "*.tldr" -mtime -1 2>/dev/null | wc -l)
+            echo "   Active rooms (24h): $recent_rooms"
+            
+            # Top 5 largest rooms
+            echo ""
+            echo "   Largest rooms:"
+            docker exec "$sync_container" find .rooms -name "*.tldr" -exec du -h {} \; 2>/dev/null | sort -hr | head -5 | sed 's/^/   /'
+        else
+            echo "   No room data found (.rooms directory not present)"
+        fi
+    fi
+    
+    echo ""
+    echo "🖼️  Asset Storage Analysis:"
+    
+    # Use internal API call within container
+    local asset_data=$(docker exec "$sync_container" wget -q -O - http://localhost:3001/api/assets 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$asset_data" ]; then
+        # Parse asset JSON data
+        local total_assets=$(parse_json_value "$asset_data" "totalAssets")
+        local asset_storage=$(parse_json_value "$asset_data" "storageUsed")
+        
+        echo "   Total assets: ${total_assets:-0}"
+        if [ -n "$asset_storage" ] && [ "$asset_storage" -gt 0 ]; then
+            echo "   Storage used: $((asset_storage / 1024)) KB"
+        else
+            echo "   Storage used: 0 KB"
+        fi
+        
+        # Show largest assets if any exist
+        if [ -n "$total_assets" ] && [ "$total_assets" -gt 0 ]; then
+            echo ""
+            echo "   Largest assets:"
+            echo "$asset_data" | grep -o '"name":"[^"]*","size":[0-9]*' | head -5 | while IFS= read -r line; do
+                local name=$(echo "$line" | cut -d'"' -f4)
+                local size=$(echo "$line" | grep -o '[0-9]*$')
+                echo "     - $name ($((size / 1024)) KB)"
+            done
+        fi
+    else
+        # Fallback to direct file system analysis
+        if docker exec "$sync_container" test -d .assets 2>/dev/null; then
+            local asset_count=$(docker exec "$sync_container" find .assets -type f 2>/dev/null | wc -l)
+            echo "   Total assets: $asset_count"
+            echo "   Storage usage:"
+            docker exec "$sync_container" du -sh .assets 2>/dev/null || echo "   Unable to calculate asset storage"
+        else
+            echo "   No asset data found (.assets directory not present)"
+        fi
+    fi
+}
+
+show_system_metrics() {
+    log_info "=== Docker Container Performance Metrics ==="
+    echo ""
+    
+    # Memory usage breakdown
+    echo "🧠 Memory Usage Breakdown:"
+    docker stats --no-stream --format "{{.Container}}: {{.MemUsage}} ({{.MemPerc}})" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
+    echo ""
+    
+    # CPU usage breakdown
+    echo "⚡ CPU Usage Breakdown:"
+    docker stats --no-stream --format "{{.Container}}: {{.CPUPerc}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
+    echo ""
+    
+    # Network I/O
+    echo "🌐 Network I/O:"
+    docker stats --no-stream --format "{{.Container}}: {{.NetIO}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
+    echo ""
+    
+    # Disk I/O
+    echo "💾 Disk I/O:"
+    docker stats --no-stream --format "{{.Container}}: {{.BlockIO}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
+    echo ""
+    
+    # Container logs size
+    echo "📝 Log File Sizes:"
+    for container in $(docker ps --format "{{.Names}}" --filter "label=com.docker.compose.project=diagram-tools-hub"); do
+        local log_file=$(docker inspect --format='{{.LogPath}}' "$container" 2>/dev/null)
+        if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+            local size=$(du -h "$log_file" 2>/dev/null | cut -f1)
+            echo "   $container: $size"
+        else
+            echo "   $container: No log file found"
+        fi
+    done
+}
+
+show_tldraw_health_status() {
+    log_info "=== TLDraw Sync Backend Health Status ==="
+    echo ""
+    
+    # Focus on TLDraw-specific services first
+    echo "🎨 TLDraw Services:"
+    local tldraw_services=("tldraw-app" "tldraw-sync-app")
+    
+    for service in "${tldraw_services[@]}"; do
+        local container_id=$(docker ps -q --filter "name=$service")
+        if [ -n "$container_id" ]; then
+            local status=$(docker inspect --format='{{.State.Status}}' "$container_id")
+            local health=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "none")
+            local started=$(docker inspect --format='{{.State.StartedAt}}' "$container_id" | cut -d'T' -f1)
+            
+            case $health in
+                "healthy")
+                    echo "   ✅ $service: $status (healthy) - Started: $started"
+                    ;;
+                "unhealthy")
+                    echo "   ❌ $service: $status (unhealthy) - Started: $started"
+                    ;;
+                "starting")
+                    echo "   🟡 $service: $status (health check starting) - Started: $started"
+                    ;;
+                *)
+                    if [ "$status" = "running" ]; then
+                        echo "   🟢 $service: $status (no health check) - Started: $started"
+                    else
+                        echo "   🔴 $service: $status - Started: $started"
+                    fi
+                    ;;
+            esac
+        else
+            echo "   ⚪ $service: not running"
+        fi
+    done
+    
+    echo ""
+    echo "🌐 Supporting Services:"
+    local services=("diagram-engine" "drawio-app" "excalidraw-app")
+    
+    for service in "${services[@]}"; do
+        local container_id=$(docker ps -q --filter "name=$service")
+        if [ -n "$container_id" ]; then
+            local status=$(docker inspect --format='{{.State.Status}}' "$container_id")
+            local health=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "none")
+            local started=$(docker inspect --format='{{.State.StartedAt}}' "$container_id" | cut -d'T' -f1)
+            
+            case $health in
+                "healthy")
+                    echo "   ✅ $service: $status (healthy) - Started: $started"
+                    ;;
+                "unhealthy")
+                    echo "   ❌ $service: $status (unhealthy) - Started: $started"
+                    ;;
+                "starting")
+                    echo "   🟡 $service: $status (health check starting) - Started: $started"
+                    ;;
+                *)
+                    if [ "$status" = "running" ]; then
+                        echo "   🟢 $service: $status (no health check) - Started: $started"
+                    else
+                        echo "   🔴 $service: $status - Started: $started"
+                    fi
+                    ;;
+            esac
+        else
+            echo "   ⚪ $service: not running"
+        fi
+    done
+    
+    echo ""
+    echo "📡 TLDraw API Health Checks:"
+    
+    # Test TLDraw sync backend APIs
+    local sync_container=$(docker ps -q --filter "name=tldraw-sync")
+    if [ -n "$sync_container" ]; then
+        # Test health endpoint
+        if docker exec "$sync_container" wget -q -O /dev/null --timeout=5 http://localhost:3001/api/health 2>/dev/null; then
+            echo "   ✅ Health API: Responsive"
+            
+            # Get detailed health info
+            local health_data=$(docker exec "$sync_container" wget -q -O - http://localhost:3001/api/health 2>/dev/null)
+            if [ -n "$health_data" ]; then
+                local health_status=$(parse_json_value "$health_data" "status")
+                echo "   🔍 Backend Status: $health_status"
+                
+                # Check memory warning
+                if echo "$health_data" | grep -q "warning"; then
+                    local memory_warning=$(echo "$health_data" | grep -o '"warning":"[^"]*"' | cut -d'"' -f4)
+                    echo "   ⚠️  Memory Warning: $memory_warning"
+                fi
+            fi
+        else
+            echo "   ❌ Health API: Not responding"
+        fi
+        
+        # Test other APIs
+        if docker exec "$sync_container" wget -q -O /dev/null --timeout=5 http://localhost:3001/api/rooms 2>/dev/null; then
+            echo "   ✅ Rooms API: Responsive"
+        else
+            echo "   ❌ Rooms API: Not responding"
+        fi
+        
+        if docker exec "$sync_container" wget -q -O /dev/null --timeout=5 http://localhost:3001/api/stats 2>/dev/null; then
+            echo "   ✅ Stats API: Responsive"
+        else
+            echo "   ❌ Stats API: Not responding"
+        fi
+    else
+        echo "   ⚠️  TLDraw sync container not found"
+    fi
+    
+    echo ""
+    echo "🔗 TLDraw Connectivity Tests:"
+    
+    # Test internal connectivity
+    local engine_container=$(docker ps -q --filter "name=diagram-engine")
+    if [ -n "$engine_container" ]; then
+        # Test TLDraw frontend
+        if docker exec "$engine_container" wget -q --spider --timeout=5 http://tldraw-app:3000 2>/dev/null; then
+            echo "   ✅ TLDraw Frontend: Accessible"
+        else
+            echo "   ❌ TLDraw Frontend: Not accessible"
+        fi
+        
+        # Test TLDraw Sync WebSocket
+        if docker exec "$engine_container" nc -z tldraw-sync-app 3001 2>/dev/null; then
+            echo "   ✅ TLDraw Sync WebSocket: Accessible"
+        else
+            echo "   ❌ TLDraw Sync WebSocket: Not accessible"
+        fi
+    else
+        echo "   ⚠️  Engine container not found - cannot test connectivity"
+    fi
+}
+
+show_realtime_stats() {
+    log_info "=== Real-time Container Statistics ==="
+    echo ""
+    echo "Press Ctrl+C to exit..."
+    echo ""
+    
+    # Show real-time stats
+    docker stats $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub")
+}
+
 case "$1" in
     start)
         start_services "$@"
@@ -1199,6 +1534,21 @@ case "$1" in
         ;;
     service-status)
         service_status
+        ;;
+    tldraw-monitor)
+        show_comprehensive_tldraw_monitor
+        ;;
+    tldraw-rooms)
+        show_tldraw_room_stats
+        ;;
+    tldraw-health)
+        show_tldraw_health_status
+        ;;
+    system-metrics)
+        show_system_metrics
+        ;;
+    system-stats)
+        show_realtime_stats
         ;;
     help|--help|-h)
         show_help

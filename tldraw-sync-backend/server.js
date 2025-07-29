@@ -221,6 +221,170 @@ async function unfurl(url) {
     }
 }
 
+// Create WebSocket server that handles upgrade requests manually
+const wss = new WebSocketServer({ noServer: true })
+
+// Monitoring and statistics functions
+async function getRoomStatistics() {
+    try {
+        const stats = {
+            totalRooms: 0,
+            activeRooms: 0,
+            storageUsed: 0,
+            rooms: [],
+            lastUpdated: new Date().toISOString()
+        }
+
+        try {
+            await mkdir(DIR, { recursive: true })
+            const roomFiles = await readdir(DIR)
+            
+            for (const file of roomFiles) {
+                if (file.endsWith('.tldr')) {
+                    const filePath = join(DIR, file)
+                    const stat_result = await stat(filePath)
+                    const roomName = file.replace('.tldr', '')
+                    
+                    // Check if room is active (modified within last 24 hours)
+                    const isActive = (Date.now() - stat_result.mtime.getTime()) < (24 * 60 * 60 * 1000)
+                    
+                    stats.rooms.push({
+                        name: roomName,
+                        size: stat_result.size,
+                        lastModified: stat_result.mtime.toISOString(),
+                        isActive: isActive
+                    })
+                    
+                    stats.totalRooms++
+                    stats.storageUsed += stat_result.size
+                    if (isActive) stats.activeRooms++
+                }
+            }
+            
+            // Sort rooms by last modified (newest first)
+            stats.rooms.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified))
+        } catch (error) {
+            console.error('Error reading room directory:', error)
+        }
+
+        return stats
+    } catch (error) {
+        console.error('Error getting room statistics:', error)
+        return { error: error.message }
+    }
+}
+
+async function getAssetStatistics() {
+    try {
+        const stats = {
+            totalAssets: 0,
+            storageUsed: 0,
+            assets: [],
+            lastUpdated: new Date().toISOString()
+        }
+
+        try {
+            await mkdir(ASSETS_DIR, { recursive: true })
+            const assetFiles = await readdir(ASSETS_DIR)
+            
+            for (const file of assetFiles) {
+                const filePath = join(ASSETS_DIR, file)
+                const stat_result = await stat(filePath)
+                
+                stats.assets.push({
+                    name: file,
+                    size: stat_result.size,
+                    lastModified: stat_result.mtime.toISOString()
+                })
+                
+                stats.totalAssets++
+                stats.storageUsed += stat_result.size
+            }
+            
+            // Sort assets by size (largest first)
+            stats.assets.sort((a, b) => b.size - a.size)
+        } catch (error) {
+            console.error('Error reading assets directory:', error)
+        }
+
+        return stats
+    } catch (error) {
+        console.error('Error getting asset statistics:', error)
+        return { error: error.message }
+    }
+}
+
+async function getSystemStatistics() {
+    try {
+        const stats = {
+            uptime: process.uptime(),
+            memoryUsage: process.memoryUsage(),
+            cpuUsage: process.cpuUsage(),
+            nodeVersion: process.version,
+            platform: process.platform,
+            pid: process.pid,
+            activeConnections: wss ? wss.clients.size : 0,
+            environment: {
+                port: PORT,
+                roomsDir: DIR,
+                assetsDir: ASSETS_DIR,
+                cleanupConfig: CLEANUP_CONFIG
+            },
+            lastUpdated: new Date().toISOString()
+        }
+
+        return stats
+    } catch (error) {
+        console.error('Error getting system statistics:', error)
+        return { error: error.message }
+    }
+}
+
+async function getHealthStatus() {
+    try {
+        const health = {
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            checks: {
+                memory: { status: 'healthy', details: process.memoryUsage() },
+                disk: { status: 'unknown', details: 'Disk check not implemented' },
+                connections: { 
+                    status: 'healthy', 
+                    details: { active: wss ? wss.clients.size : 0 }
+                }
+            }
+        }
+
+        // Check memory usage (warn if over 80% of heap used)
+        const memUsage = process.memoryUsage()
+        const heapUsedPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100
+        if (heapUsedPercent > 80) {
+            health.checks.memory.status = 'warning'
+            health.checks.memory.warning = `High memory usage: ${heapUsedPercent.toFixed(1)}%`
+        }
+
+        // Check directories
+        try {
+            await mkdir(DIR, { recursive: true })
+            await mkdir(ASSETS_DIR, { recursive: true })
+            health.checks.storage = { status: 'healthy', details: 'Directories accessible' }
+        } catch (error) {
+            health.checks.storage = { status: 'error', details: error.message }
+            health.status = 'unhealthy'
+        }
+
+        return health
+    } catch (error) {
+        console.error('Error getting health status:', error)
+        return { 
+            status: 'error', 
+            timestamp: new Date().toISOString(),
+            error: error.message 
+        }
+    }
+}
+
 // Create HTTP server for REST endpoints
 const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`)
@@ -284,6 +448,35 @@ const server = createServer(async (req, res) => {
         return
     }
 
+    // Monitoring endpoints
+    if (req.method === 'GET' && url.pathname === '/api/rooms') {
+        const roomStats = await getRoomStatistics()
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(roomStats))
+        return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/assets') {
+        const assetStats = await getAssetStatistics()
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(assetStats))
+        return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/stats') {
+        const stats = await getSystemStatistics()
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(stats))
+        return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/health') {
+        const health = await getHealthStatus()
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(health))
+        return
+    }
+
     // Health check
     if (req.method === 'GET' && url.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'text/plain' })
@@ -294,9 +487,6 @@ const server = createServer(async (req, res) => {
     res.writeHead(404)
     res.end('Not found')
 })
-
-// Create WebSocket server that handles upgrade requests manually
-const wss = new WebSocketServer({ noServer: true })
 
 // Handle WebSocket upgrade requests
 server.on('upgrade', (request, socket, head) => {

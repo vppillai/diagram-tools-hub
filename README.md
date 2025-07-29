@@ -4,14 +4,13 @@
 [![Security Scan](https://github.com/vppillai/diagram-tools-hub/workflows/Security%20Scan/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/security.yml)
 [![Release Management](https://github.com/vppillai/diagram-tools-hub/workflows/🚀%20Release%20Management/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/release.yml)
 
-A unified Docker setup that brings together three powerful diagramming tools under one roof:
+A unified Docker-based platform that integrates three powerful diagramming tools behind an Nginx reverse proxy with HTTPS support:
+
 - **Draw.io** - Professional diagrams and flowcharts
 - **Excalidraw** - Hand-drawn style diagrams and wireframes  
-- **TLDraw** - Modern collaborative drawing canvas with real-time collaboration
+- **TLDraw** - Modern collaborative drawing canvas with real-time multi-user collaboration
 
 ## Quick Start
-
-Clone and run:
 
 ```bash
 git clone https://github.com/vppillai/diagram-tools-hub.git
@@ -19,59 +18,65 @@ cd diagram-tools-hub
 ./manage-config.sh start
 ```
 
-Then open http://localhost:8080 in your browser.
-
-## What's Included
-
-- **Unified Dashboard** - Single page to access all tools
-- **Direct Links** - Each tool available at its own path
-- **Real-time Status** - See which tools are online
-- **Easy Management** - Simple scripts to start/stop/restart
+Then open https://localhost:8080 in your browser.
 
 ## Access Points
 
-- **Main Hub**: http://localhost:8080
-- **Draw.io**: http://localhost:8080/drawio/
-- **Excalidraw**: http://localhost:8080/excalidraw/
-- **TLDraw**: http://localhost:8080/tldraw/
-- **TLDraw Collaborative Room**: http://localhost:8080/tldraw/room-name
+- **Main Hub**: https://localhost:8080 (or configured HTTPS_PORT)
+- **Draw.io**: https://localhost:8080/drawio/
+- **Excalidraw**: https://localhost:8080/excalidraw/  
+- **TLDraw**: https://localhost:8080/tldraw/
+- **TLDraw Collaborative Room**: https://localhost:8080/tldraw/room-name
+- **Health Check**: https://localhost:8080/health
 
-## Requirements
+## Service Management
 
-- Docker & Docker Compose
-- 2GB+ RAM
-- Port 8080 available
+The `manage-config.sh` script handles all operations:
 
-## Management
-
-The `manage-config.sh` script handles most operations:
-
+### Basic Operations
 ```bash
-./manage-config.sh start      # Start all services
-./manage-config.sh stop       # Stop all services  
-./manage-config.sh restart    # Restart everything
-./manage-config.sh status     # Check service status
-./manage-config.sh logs       # View logs
-./manage-config.sh rebuild    # Rebuild containers
+./manage-config.sh start      # Start all services with auto-generated HTTPS
+./manage-config.sh stop       # Stop all services
+./manage-config.sh restart    # Restart all services
+./manage-config.sh rebuild    # Rebuild containers and restart
+./manage-config.sh status     # Show container status and resource usage
 ```
 
-## Auto-Start Service
+### Configuration Commands
+```bash
+./manage-config.sh show           # Display current configuration  
+./manage-config.sh http-only      # Switch to HTTP-only mode (disable SSL)
+./manage-config.sh cleanup        # Remove conflicting containers/networks
+./manage-config.sh clean-rebuild  # Complete rebuild from scratch
+```
+
+### Individual Service Management
+```bash
+./manage-config.sh restart tldraw        # Restart specific service
+./manage-config.sh rebuild tldraw-sync   # Rebuild and restart specific service
+./manage-config.sh logs tldraw          # View logs for specific service
+./manage-config.sh stop drawio          # Stop specific service
+
+# Available services: engine, drawio, excalidraw, tldraw, tldraw-sync
+```
+
+### TLDraw Monitoring Commands
+```bash
+./manage-config.sh tldraw-monitor    # Comprehensive TLDraw system dashboard
+./manage-config.sh tldraw-rooms      # TLDraw room statistics and collaboration usage
+./manage-config.sh tldraw-health     # TLDraw sync backend health and API status  
+./manage-config.sh system-metrics    # Docker container performance metrics
+./manage-config.sh system-stats      # Real-time container resource usage
+```
+
+## Auto-Start System Service
 
 Install as a systemd service for automatic startup on server reboot:
 
-### Quick Installation
-
 ```bash
-# Simple installation (recommended)
-sudo ./install-service.sh
-
-# Or use the management script directly
+# Install service (requires sudo)
 sudo ./manage-config.sh install-service
-```
 
-### Service Management
-
-```bash
 # Check service status
 ./manage-config.sh service-status
 
@@ -79,359 +84,231 @@ sudo ./manage-config.sh install-service
 sudo ./manage-config.sh uninstall-service
 ```
 
-### Service Management
-
-Once installed, you can manage the service using systemctl:
-
+Once installed, manage with systemctl:
 ```bash
-# Start the service
-sudo systemctl start drawapp
-
-# Stop the service
-sudo systemctl stop drawapp
-
-# Restart the service
-sudo systemctl restart drawapp
-
-# Check status
-sudo systemctl status drawapp
-
-# View logs
-sudo journalctl -u drawapp -f
-
-# Enable/disable auto-start
-sudo systemctl enable drawapp   # Enable auto-start
-sudo systemctl disable drawapp  # Disable auto-start
+sudo systemctl start/stop/restart drawapp
+sudo journalctl -u drawapp -f  # View service logs
 ```
 
-The service will automatically:
-- Start on system boot
-- Restart on failure
-- Handle SSL certificate generation
-- Manage Docker containers
-- Provide proper logging
+The service automatically handles SSL generation, container management, and restart on failure.
 
 ## HTTPS Support
 
-### Automatic HTTPS
-
+### Automatic HTTPS (Default)
 HTTPS is enabled by default with auto-generated self-signed certificates:
+- RSA 2048-bit keys with 365-day validity
+- Subject Alternative Names for localhost and IP addresses
+- HTTP automatically redirects to HTTPS
+- Modern security headers and TLS configuration
 
-```bash
-./manage-config.sh start
-# Automatically generates SSL certificates and starts with HTTPS
-# Access: https://localhost (HTTP redirects to HTTPS)
-```
-
-The system automatically:
-- Generates RSA 2048-bit private keys
-- Creates X.509 certificates valid for 365 days
-- Uses Canada (CA) as the certificate country
-- Includes Subject Alternative Names (SAN) for localhost and IP addresses
-- Sets proper file permissions (600 for keys, 644 for certificates)
-
-### Custom Certificate
-
-Use your own SSL certificate:
-
+### Custom Certificates
 ```bash
 ./manage-config.sh start /path/to/cert.pem /path/to/key.pem
-# Uses your custom certificates
 ```
-
-Custom certificates are copied to `./certs/` directory and configured automatically.
 
 ### HTTP-Only Mode
-
-Switch to HTTP-only (no SSL):
-
 ```bash
 ./manage-config.sh http-only
-# Switches to HTTP-only mode on configured HTTP_PORT
 ```
 
-### Certificate Details
+## TLDraw Real-time Collaboration
 
-#### Auto-Generated Certificates:
-- **Country**: CA (Canada)
-- **Organization**: Diagram Tools Hub
-- **Validity**: 365 days
-- **Key Size**: RSA 2048-bit
-- **Extensions**: Subject Alternative Names for localhost, *.localhost, 127.0.0.1, ::1
-- **Location**: `./certs/cert.pem` and `./certs/key.pem`
+TLDraw features a powerful WebSocket-based collaboration system supporting multiple simultaneous users.
 
-#### Certificate Configuration:
-The SSL domain can be configured in `.env`:
-```bash
-SSL_DOMAIN=your-domain.com
-```
+### Usage Modes
 
-### HTTPS Features
+**Standalone Mode:**
+- URL: `https://localhost:8080/tldraw/`
+- Single-user experience, no server sync
 
-- **Automatic Setup** - SSL certificates generated automatically if not present
-- **HTTP → HTTPS Redirect** - All HTTP traffic redirects to HTTPS  
-- **Security Headers** - HSTS, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
-- **Modern TLS** - TLS 1.2/1.3 with secure cipher suites
-- **Configurable Ports** - HTTPS_PORT and HTTP_REDIRECT_PORT via .env
-- **Certificate Management** - Auto-generation, custom certificates, or HTTP-only mode
-- **Browser Compatibility** - Works with all modern browsers (accept security warning for self-signed)
+**Collaborative Mode:**
+- URL: `https://localhost:8080/tldraw/your-room-name`
+- Real-time multi-user collaboration
+- Live cursors and presence indicators
+- Instant synchronization across all users
+
+### Collaboration Features
+
+🎨 **Smart User Management:**
+- Automatic superhero/villain name assignment (Superman, Batman, Joker, etc.)
+- Deterministic color assignment based on user ID hash (prevents collisions)
+- Editable names and colors via user avatar
+- Room-specific user preferences with localStorage persistence
+
+👥 **Real-time Presence:**
+- Live collaborative cursors with user identification
+- Real-time drawing updates and shape modifications
+- Connection status indicators (🟢 online, 🔴 offline, 🟡 loading)
+- User avatars showing active collaborators
+
+💾 **Intelligent Persistence:**
+- File-based room storage with automatic cleanup
+- Progressive loading with fallback to local store
+- Tab visibility tracking for idle user optimization
+- Automatic reconnection handling
+
+🔧 **System Architecture:**
+- **Frontend**: React with @tldraw/sync integration
+- **Backend**: Node.js WebSocket server using @tldraw/sync-core  
+- **Storage**: File-based persistence in `.rooms` and `.assets` directories
+- **Monitoring**: REST API endpoints for room statistics and health checks
+
+### Monitoring & Analytics
+
+The TLDraw system includes comprehensive monitoring capabilities:
+
+**Room Statistics:**
+- Total and active room counts
+- Storage usage analysis
+- Recent room activity (last 24 hours)
+- Room-specific collaboration metrics
+
+**Health Monitoring:**
+- API endpoint responsiveness checks
+- WebSocket connection health
+- Memory usage warnings
+- System performance metrics
+
+**Real-time Insights:**
+- Active user counts per room
+- Asset storage and management
+- Connection status tracking
+- Performance bottleneck identification
 
 ## Configuration
 
 ### Environment Variables
 
-The `.env` file allows you to customize ports and other settings:
-
+Key variables in `.env`:
 ```bash
-# External Port Configuration
-HTTP_PORT=8080              # HTTP port (when HTTPS is disabled)
-HTTPS_PORT=443              # HTTPS port
-HTTP_REDIRECT_PORT=80       # HTTP redirect port (when HTTPS is enabled)
+# Port Configuration
+HTTP_PORT=8080                      # HTTP port (when HTTPS disabled)
+HTTPS_PORT=8080                     # HTTPS port (currently set to 8080)
+HTTP_REDIRECT_PORT=80               # HTTP redirect port
+SSL_DOMAIN=localhost                # SSL certificate domain
 
-# SSL Configuration
-SSL_DOMAIN=localhost        # Domain for SSL certificate generation
+# TLDraw Settings
+TLDRAW_DEBUG_PANEL=true             # TLDraw debug panel (enabled)
 
-# TLDraw settings
-TLDRAW_DEBUG_PANEL=false
-
-# Development settings  
-NODE_ENV=production
-ENABLE_ANALYTICS=false
-ENABLE_TELEMETRY=false
+# Application Settings
+NODE_ENV=production                 # Node.js environment
+ENABLE_ANALYTICS=false              # Analytics feature flag
+ENABLE_TELEMETRY=false              # Telemetry feature flag
+COMPOSE_PROJECT_NAME=diagram-tools-hub  # Docker Compose project name
 ```
 
-### Vite Development Server Configuration
-
-The TLDraw application uses Vite as its development server. The configuration allows access from all hostnames by default to prevent "Blocked request" errors.
-
-**Current configuration**: `allowedHosts: true` (allows all hostnames)
-
-**Note**: If you need to restrict access to specific hostnames only, you can modify the `tldraw/vite.config.js` file and change `allowedHosts: true` to an array of allowed hostnames like `['localhost', '127.0.0.1', 'your-domain.com']`.
-
-### Custom Ports
-
-Simply update the `.env` file to use different ports:
+### TLDraw Development
 
 ```bash
-# Use custom ports
-HTTP_PORT=9000
-HTTPS_PORT=8443
-HTTP_REDIRECT_PORT=8080
+# Frontend development
+cd tldraw && npm run dev    # Development mode (port 3000)
+cd tldraw && npm run build  # Production build
+cd tldraw && npm run preview # Preview production build
+
+# Sync backend development  
+cd tldraw-sync-backend && npm run dev   # Development with --watch
+cd tldraw-sync-backend && npm start     # Production mode
+
+# Container rebuilds
+./manage-config.sh rebuild tldraw       # Rebuild frontend
+./manage-config.sh rebuild tldraw-sync  # Rebuild sync backend
 ```
-
-Then restart the services:
-```bash
-./manage-config.sh restart
-```
-
-## TLDraw Real-time Collaboration
-
-TLDraw includes a powerful real-time collaboration system that allows multiple users to work together on the same canvas.
-
-### How to Use Collaboration
-
-**Standalone Mode (No Sync):**
-- Access: `http://localhost:8080/tldraw/`
-- Single-user experience
-- No server load from sync connections
-
-**Collaborative Mode (Real-time Sync):**
-- Access: `http://localhost:8080/tldraw/your-room-name`
-- Multi-user real-time collaboration
-- Live cursors and presence indicators
-- Instant sync across all connected users
-
-### Collaboration Features
-
-🎨 **User Customization:**
-- Each user gets a distinct color automatically
-- Click your avatar to change name and color
-- Changes visible to all collaborators instantly
-
-👥 **Real-time Presence:**
-- See other users' cursors in real-time
-- Live drawing updates as others sketch
-- User avatars show who's in the room
-
-💾 **Smart Persistence:**
-- Room content automatically saved
-- Survives browser refreshes and reconnections
-- Progressive loading for fast startup
-
-🎯 **Room Management:**
-- Simple URL-based room creation
-- No signup required - just share the link
-- Room indicator shows connection status
-
-### Sync System Architecture
-
-The collaboration is powered by a custom WebSocket-based sync backend:
-
-- **TLDraw Frontend** - React app with @tldraw/sync integration
-- **Sync Backend** - Node.js WebSocket server using @tldraw/sync-core
-- **Room Persistence** - File-based storage with automatic cleanup
-- **Asset Management** - Upload/download system for images and files
-- **Real-time Communication** - WebSocket connections through nginx proxy
-
-### Storage Management
-
-The sync system includes automatic cleanup to manage server resources:
-
-```bash
-# Configurable via environment variables
-ROOM_RETENTION_DAYS=7        # Clean up inactive rooms after 7 days
-ASSET_RETENTION_DAYS=30      # Clean up unused assets after 30 days  
-CLEANUP_INTERVAL_HOURS=6     # Run cleanup every 6 hours
-CLEANUP_ENABLED=true         # Enable/disable cleanup
-```
-
-Rooms with active connections are never deleted, ensuring ongoing collaborations remain safe.
 
 ## Architecture
 
-- **Engine** (Nginx) - Serves the dashboard and routes traffic
-- **Draw.io** - Professional diagramming tool
-- **Excalidraw** - Hand-drawn style diagrams
-- **TLDraw** - Modern collaborative canvas
-- **TLDraw Sync Backend** - WebSocket server for real-time collaboration
+### Service Structure
+- **Engine** (Nginx) - Reverse proxy, SSL termination, and landing page server
+- **Draw.io** - Professional diagramming tool (port 8081 → `/drawio/`)
+- **Excalidraw** - Hand-drawn diagrams (port 8082 → `/excalidraw/`)  
+- **TLDraw** - Collaborative canvas (port 8083 → `/tldraw/`)
+- **TLDraw Sync** - WebSocket collaboration backend (port 3001, internal)
+
+### Network Architecture
+- Shared Docker network: `diagram-tools-network`
+- Internal communication via container hostnames
+- External access through Nginx reverse proxy only
+- SSL/TLS termination at proxy level
+
+### TLDraw Collaboration Stack
+- **Frontend**: React with Vite build system, @tldraw/sync integration
+- **Backend**: Node.js with WebSocket server (@tldraw/sync-core)
+- **Storage**: File-based persistence with automatic cleanup
+- **Assets**: Upload/download system with size management
+- **Monitoring**: REST API for statistics and health checks
 
 ## Troubleshooting
 
-### Services won't start
-
-Check if ports are in use:
+### Port Conflicts
 ```bash
-lsof -i :8080-8083
-```
-
-### View logs
-
-```bash
-./manage-config.sh logs
-# or
-docker-compose logs -f
-```
-
-### HTTPS Issues
-
-**Browser security warning:**
-```bash
-# Normal for self-signed certificates
-# Click "Advanced" → "Proceed to localhost"
-```
-
-**Port conflicts:**
-```bash
-# Check what's using your ports
-sudo lsof -i :80
-sudo lsof -i :443
+# Check port usage
+lsof -i :80-8083
 
 # Use custom ports in .env
 HTTPS_PORT=8443
 HTTP_REDIRECT_PORT=8080
 ```
 
-**Certificate regeneration:**
+### Container Issues
 ```bash
-# Remove existing certificates to regenerate
+./manage-config.sh cleanup       # Remove conflicts
+./manage-config.sh clean-rebuild # Complete rebuild
+./manage-config.sh logs [service] # Debug specific service
+```
+
+### SSL Issues
+```bash
+# Regenerate certificates
 rm -rf ./certs/
 ./manage-config.sh restart
+
+# Switch to HTTP-only
+./manage-config.sh http-only
 ```
 
-**Container conflicts:**
+### TLDraw Issues
 ```bash
-# Clean up conflicting containers
-./manage-config.sh cleanup
-./manage-config.sh start
-```
-
-### Rebuild containers
-
-```bash
-./manage-config.sh rebuild
-```
-
-### TLDraw build issues
-
-TLDraw builds from source. If it fails:
-
-```bash
+# Rebuild from scratch
 docker-compose build --no-cache tldraw
+docker-compose build --no-cache tldraw-sync
+
+# Check collaboration health
+./manage-config.sh tldraw-health
 ```
 
-## Development
+## Requirements
 
-### Local development
+- **Docker & Docker Compose** - Container orchestration
+- **2GB+ RAM** - For all services running simultaneously  
+- **Available Ports** - 80, 443, 8080 (or configured alternatives)
+- **Modern Browser** - For accessing the diagramming tools
 
+## Development & Contributing
+
+### Local Development
 ```bash
-# Start with development settings
 NODE_ENV=development docker-compose up -d
-
-# View logs
 docker-compose logs -f tldraw
 ```
 
-### Single Container Operations
-
-The management script supports rebuilding and restarting individual services:
-
-```bash
-# Restart specific services
-./manage-config.sh restart tldraw          # Restart only TLDraw
-./manage-config.sh restart tldraw-sync     # Restart only sync backend
-
-# Rebuild specific services  
-./manage-config.sh rebuild tldraw          # Rebuild and restart TLDraw
-./manage-config.sh rebuild-only engine     # Rebuild nginx without restart
-
-# Stop specific services
-./manage-config.sh stop drawio             # Stop only Draw.io
-
-# Available services: engine, drawio, excalidraw, tldraw, tldraw-sync
-```
-
-### TLDraw Development
-
-For TLDraw-specific development:
-
-```bash
-# Rebuild TLDraw frontend
-./manage-config.sh rebuild tldraw
-
-# Rebuild sync backend  
-./manage-config.sh rebuild tldraw-sync
-
-# View TLDraw logs
-./manage-config.sh logs tldraw
-./manage-config.sh logs tldraw-sync
-
-# Direct development (if needed)
-cd tldraw && npm run dev
-```
-
-### Adding new tools
-
+### Adding New Tools
 1. Add service to `docker-compose.yml`
 2. Update `engine/nginx.conf` with proxy rules
 3. Add tool card to `engine/html/index.html`
 
+### Contributing
+Found a bug or have an idea? Open an issue or submit a PR!
+
 ## Releases
 
-Docker images are automatically built and published on releases:
-
+Docker images are automatically built and published:
 ```bash
-# Pull latest images
 docker pull ghcr.io/vppillai/diagram-tools-hub/tldraw:latest
 docker pull ghcr.io/vppillai/diagram-tools-hub/engine:latest
 ```
 
-## Contributing
-
-Found a bug or have an idea? Open an issue or submit a PR!
-
 ## License
 
-This project is open source. The individual tools have their own licenses:
-- Draw.io: Apache 2.0
-- Excalidraw: MIT  
-- TLDraw: Apache 2.0 
+This project is open source. Individual tools retain their original licenses:
+- **Draw.io**: Apache 2.0
+- **Excalidraw**: MIT  
+- **TLDraw**: Apache 2.0
