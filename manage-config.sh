@@ -13,7 +13,6 @@ load_env() {
     # Set defaults if not specified
     export HTTP_PORT=${HTTP_PORT:-8080}
     export HTTPS_PORT=${HTTPS_PORT:-443}
-    export HTTP_REDIRECT_PORT=${HTTP_REDIRECT_PORT:-80}
     export SSL_DOMAIN=${SSL_DOMAIN:-localhost}
 }
 
@@ -140,11 +139,6 @@ start_services() {
         else
             log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
         fi
-        if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
-            log_info "  🔄 http://localhost -> redirects to HTTPS"
-        else
-            log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
-        fi
         log_warning "If using self-signed certificates, accept the browser security warning."
     else
         log_info "Services available at:"
@@ -199,11 +193,6 @@ restart_services() {
             else
                 log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
             fi
-            if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
-                log_info "  🔄 http://localhost -> redirects to HTTPS"
-            else
-                log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
-            fi
             log_warning "If using self-signed certificates, accept the browser security warning."
         else
             log_info "Services available at:"
@@ -246,11 +235,6 @@ rebuild_services() {
                 log_info "  🔒 https://localhost (Main hub)"
             else
                 log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
-            fi
-            if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
-                log_info "  🔄 http://localhost -> redirects to HTTPS"
-            else
-                log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
             fi
             log_warning "If using self-signed certificates, accept the browser security warning."
         else
@@ -450,8 +434,7 @@ enable_https_config() {
     
     log_success "HTTPS configuration enabled!"
     log_info "Services will be available at:"
-    log_info "  - https://localhost (Main hub)"
-    log_info "  - http://localhost -> redirects to HTTPS"
+    log_info "  - https://localhost:$HTTPS_PORT (Main hub)"
     log_warning "If using self-signed certificates, you'll need to accept the security warning in your browser."
 }
 
@@ -545,13 +528,6 @@ http {
 
     upstream tldraw_sync_backend {
         server tldraw-sync:3001;
-    }
-
-    # HTTP to HTTPS redirect
-    server {
-        listen 80;
-        server_name _;
-        return 301 https://$host$request_uri;
     }
 
     # HTTPS server
@@ -686,6 +662,7 @@ http {
             return 200 "OK\n";
             add_header Content-Type text/plain;
         }
+        
     }
 }
 EOF
@@ -710,8 +687,7 @@ services:
     image: nginx:alpine
     container_name: diagram-engine
     ports:
-      - "$HTTP_REDIRECT_PORT:80"    # HTTP (redirects to HTTPS)
-      - "$HTTPS_PORT:443"  # HTTPS
+      - "$HTTPS_PORT:443"  # HTTPS only
     volumes:
       - ./engine/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./engine/html:/usr/share/nginx/html:ro
@@ -1489,6 +1465,7 @@ show_realtime_stats() {
     # Show real-time stats
     docker stats $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub")
 }
+
 
 case "$1" in
     start)

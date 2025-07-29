@@ -7,6 +7,8 @@ import {
     Tldraw,
     uniqueId,
     useTldrawUser,
+    createTLStore,
+    defaultShapeUtils,
 } from '@tldraw/tldraw'
 import '@tldraw/tldraw/tldraw.css'
 
@@ -28,13 +30,14 @@ const getWebSocketUrl = (roomId) => {
 // Generate room ID from URL path, return null if no room specified
 const getRoomId = () => {
     const path = window.location.pathname
+    
     // Extract room name from /tldraw/room-name pattern
     const pathParts = path.split('/')
     const tldrawIndex = pathParts.indexOf('tldraw')
     
     if (tldrawIndex !== -1 && pathParts.length > tldrawIndex + 1) {
         const roomId = pathParts[tldrawIndex + 1]
-        if (roomId && roomId.trim()) {
+        if (roomId && roomId.trim() && roomId !== '') {
             return roomId
         }
     }
@@ -373,24 +376,60 @@ function SyncTldraw({ roomId }) {
     )
 }
 
-// Component for local-only TLDraw
+// Component for local-only TLDraw with persistence
 function LocalTldraw({ roomId }) {
-    // Local TLDraw instance for fast initial loading
+    const STORAGE_KEY = 'tldraw-local-document'
+    
+    // Use a simple store without complex persistence setup
+    const store = React.useMemo(() => {
+        return createTLStore({
+            shapeUtils: defaultShapeUtils,
+        })
+    }, [])
 
     return (
         <>
             <Tldraw
+                store={store}
                 options={{
                     maxImageDimension: 5000,
                     maxAssetSize: 10 * 1024 * 1024, // 10mb
                 }}
                 inferDarkMode
                 onMount={(editor) => {
-                    // Standalone mode - no external asset handlers needed
-                    
                     if (typeof window !== 'undefined') {
                         window.editor = editor
                     }
+                    
+                    // Set up persistence using editor events
+                    let saveTimeout
+                    const handleChange = () => {
+                        clearTimeout(saveTimeout)
+                        saveTimeout = setTimeout(() => {
+                            try {
+                                const snapshot = editor.store.getSnapshot()
+                                localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
+                            } catch (error) {
+                                console.warn('Failed to save document:', error)
+                            }
+                        }, 100)
+                    }
+                    
+                    // Listen for changes using editor events
+                    editor.store.listen(handleChange)
+                    
+                    // Load saved data after editor is ready
+                    setTimeout(() => {
+                        try {
+                            const saved = localStorage.getItem(STORAGE_KEY)
+                            if (saved) {
+                                const snapshot = JSON.parse(saved)
+                                editor.store.loadSnapshot(snapshot)
+                            }
+                        } catch (error) {
+                            console.warn('Failed to load saved document:', error)
+                        }
+                    }, 100)
                 }}
             />
             
