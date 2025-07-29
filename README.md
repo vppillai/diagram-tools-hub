@@ -7,7 +7,7 @@
 A unified Docker setup that brings together three powerful diagramming tools under one roof:
 - **Draw.io** - Professional diagrams and flowcharts
 - **Excalidraw** - Hand-drawn style diagrams and wireframes  
-- **TLDraw** - Modern collaborative drawing canvas
+- **TLDraw** - Modern collaborative drawing canvas with real-time collaboration
 
 ## Quick Start
 
@@ -34,6 +34,7 @@ Then open http://localhost:8080 in your browser.
 - **Draw.io**: http://localhost:8080/drawio/
 - **Excalidraw**: http://localhost:8080/excalidraw/
 - **TLDraw**: http://localhost:8080/tldraw/
+- **TLDraw Collaborative Room**: http://localhost:8080/tldraw/room-name
 
 ## Requirements
 
@@ -223,12 +224,76 @@ Then restart the services:
 ./manage-config.sh restart
 ```
 
+## TLDraw Real-time Collaboration
+
+TLDraw includes a powerful real-time collaboration system that allows multiple users to work together on the same canvas.
+
+### How to Use Collaboration
+
+**Standalone Mode (No Sync):**
+- Access: `http://localhost:8080/tldraw/`
+- Single-user experience
+- No server load from sync connections
+
+**Collaborative Mode (Real-time Sync):**
+- Access: `http://localhost:8080/tldraw/your-room-name`
+- Multi-user real-time collaboration
+- Live cursors and presence indicators
+- Instant sync across all connected users
+
+### Collaboration Features
+
+🎨 **User Customization:**
+- Each user gets a distinct color automatically
+- Click your avatar to change name and color
+- Changes visible to all collaborators instantly
+
+👥 **Real-time Presence:**
+- See other users' cursors in real-time
+- Live drawing updates as others sketch
+- User avatars show who's in the room
+
+💾 **Smart Persistence:**
+- Room content automatically saved
+- Survives browser refreshes and reconnections
+- Progressive loading for fast startup
+
+🎯 **Room Management:**
+- Simple URL-based room creation
+- No signup required - just share the link
+- Room indicator shows connection status
+
+### Sync System Architecture
+
+The collaboration is powered by a custom WebSocket-based sync backend:
+
+- **TLDraw Frontend** - React app with @tldraw/sync integration
+- **Sync Backend** - Node.js WebSocket server using @tldraw/sync-core
+- **Room Persistence** - File-based storage with automatic cleanup
+- **Asset Management** - Upload/download system for images and files
+- **Real-time Communication** - WebSocket connections through nginx proxy
+
+### Storage Management
+
+The sync system includes automatic cleanup to manage server resources:
+
+```bash
+# Configurable via environment variables
+ROOM_RETENTION_DAYS=7        # Clean up inactive rooms after 7 days
+ASSET_RETENTION_DAYS=30      # Clean up unused assets after 30 days  
+CLEANUP_INTERVAL_HOURS=6     # Run cleanup every 6 hours
+CLEANUP_ENABLED=true         # Enable/disable cleanup
+```
+
+Rooms with active connections are never deleted, ensuring ongoing collaborations remain safe.
+
 ## Architecture
 
 - **Engine** (Nginx) - Serves the dashboard and routes traffic
 - **Draw.io** - Professional diagramming tool
 - **Excalidraw** - Hand-drawn style diagrams
 - **TLDraw** - Modern collaborative canvas
+- **TLDraw Sync Backend** - WebSocket server for real-time collaboration
 
 ## Troubleshooting
 
@@ -304,6 +369,44 @@ NODE_ENV=development docker-compose up -d
 
 # View logs
 docker-compose logs -f tldraw
+```
+
+### Single Container Operations
+
+The management script supports rebuilding and restarting individual services:
+
+```bash
+# Restart specific services
+./manage-config.sh restart tldraw          # Restart only TLDraw
+./manage-config.sh restart tldraw-sync     # Restart only sync backend
+
+# Rebuild specific services  
+./manage-config.sh rebuild tldraw          # Rebuild and restart TLDraw
+./manage-config.sh rebuild-only engine     # Rebuild nginx without restart
+
+# Stop specific services
+./manage-config.sh stop drawio             # Stop only Draw.io
+
+# Available services: engine, drawio, excalidraw, tldraw, tldraw-sync
+```
+
+### TLDraw Development
+
+For TLDraw-specific development:
+
+```bash
+# Rebuild TLDraw frontend
+./manage-config.sh rebuild tldraw
+
+# Rebuild sync backend  
+./manage-config.sh rebuild tldraw-sync
+
+# View TLDraw logs
+./manage-config.sh logs tldraw
+./manage-config.sh logs tldraw-sync
+
+# Direct development (if needed)
+cd tldraw && npm run dev
 ```
 
 ### Adding new tools

@@ -49,9 +49,10 @@ show_help() {
     echo ""
     echo "Container Management Commands:"
     echo "  start [CERT] [KEY]      Start all services (auto-generates SSL if not provided)"
-    echo "  stop                    Stop all services"
-    echo "  restart [CERT] [KEY]    Restart all services (auto-generates SSL if not provided)"
-    echo "  rebuild [CERT] [KEY]    Rebuild and restart all services"
+    echo "  stop [SERVICE]          Stop all services or specific service"
+    echo "  restart [SERVICE]       Restart all services or specific service"
+    echo "  rebuild [SERVICE]       Rebuild and restart all services or specific service"
+    echo "  rebuild-only [SERVICE]  Rebuild specific service without restarting"
     echo "  clean                   Stop and remove all containers, networks, and images"
     echo "  clean-rebuild           Clean everything and rebuild from scratch"
     echo "  status                  Show status of all containers"
@@ -75,13 +76,16 @@ show_help() {
     echo "Examples:"
     echo "  $0 start                        # Start with auto-generated SSL"
     echo "  $0 start cert.pem key.pem       # Start with custom certificates"
-    echo "  $0 http-only                    # Switch to HTTP-only mode"
-    echo "  $0 restart                      # Restart with existing/auto-generated SSL"
-    echo "  $0 rebuild                      # Rebuild with SSL"
+    echo "  $0 restart tldraw               # Restart only TLDraw service"
+    echo "  $0 rebuild tldraw-sync          # Rebuild and restart TLDraw sync service"
+    echo "  $0 rebuild-only engine          # Rebuild engine without restarting"
+    echo "  $0 stop drawio                  # Stop only Draw.io service"
     echo "  $0 logs tldraw                  # Show tldraw logs"
     echo "  $0 status                       # Show container status"
     echo "  sudo $0 install-service         # Install as systemd service"
     echo "  sudo $0 uninstall-service       # Remove systemd service"
+    echo ""
+    echo "Available services: engine, drawio, excalidraw, tldraw, tldraw-sync"
     echo ""
     echo "Note: SSL certificates are automatically generated if not present."
     echo "      Use 'http-only' command to disable HTTPS."
@@ -144,86 +148,126 @@ start_services() {
 }
 
 stop_services() {
-    log_info "Stopping all services..."
-    sudo docker compose down
-    log_success "All services stopped successfully!"
+    local service="$2"
+    
+    if [ -n "$service" ]; then
+        log_info "Stopping $service service..."
+        sudo docker compose stop "$service"
+        log_success "$service service stopped successfully!"
+    else
+        log_info "Stopping all services..."
+        sudo docker compose down
+        log_success "All services stopped successfully!"
+    fi
 }
 
 restart_services() {
-    local cert_file="$2"
-    local key_file="$3"
+    local service="$2"
+    local cert_file="$3"
+    local key_file="$4"
     
-    log_info "Restarting all services..."
-    sudo docker compose down
-    
-    # Handle SSL setup automatically
-    setup_ssl_auto "$cert_file" "$key_file"
-    
-    # Ensure docker-compose.yml uses environment variables
-    ensure_env_variables_in_compose
-    
-    sudo docker compose up -d
-    log_success "All services restarted successfully!"
-    
-    # Show access information
-    if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
-        log_info "HTTPS is configured. Services available at:"
-        if [ "$HTTPS_PORT" = "443" ]; then
-            log_info "  🔒 https://localhost (Main hub)"
-        else
-            log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
-        fi
-        if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
-            log_info "  🔄 http://localhost -> redirects to HTTPS"
-        else
-            log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
-        fi
-        log_warning "If using self-signed certificates, accept the browser security warning."
+    if [ -n "$service" ]; then
+        log_info "Restarting $service service..."
+        sudo docker compose restart "$service"
+        log_success "$service service restarted successfully!"
+        show_status
     else
-        log_info "Services available at:"
-        log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+        log_info "Restarting all services..."
+        sudo docker compose down
+        
+        # Handle SSL setup automatically
+        setup_ssl_auto "$cert_file" "$key_file"
+        
+        # Ensure docker-compose.yml uses environment variables
+        ensure_env_variables_in_compose
+        
+        sudo docker compose up -d
+        log_success "All services restarted successfully!"
+        
+        # Show access information
+        if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+            log_info "HTTPS is configured. Services available at:"
+            if [ "$HTTPS_PORT" = "443" ]; then
+                log_info "  🔒 https://localhost (Main hub)"
+            else
+                log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+            fi
+            if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
+                log_info "  🔄 http://localhost -> redirects to HTTPS"
+            else
+                log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
+            fi
+            log_warning "If using self-signed certificates, accept the browser security warning."
+        else
+            log_info "Services available at:"
+            log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+        fi
+        
+        show_status
     fi
-    
-    show_status
 }
 
 rebuild_services() {
-    local cert_file="$2"
-    local key_file="$3"
+    local service="$2"
+    local cert_file="$3"
+    local key_file="$4"
     
-    log_info "Rebuilding and restarting all services..."
-    sudo docker compose down
-    
-    # Handle SSL setup automatically
-    setup_ssl_auto "$cert_file" "$key_file"
-    
-    # Ensure docker-compose.yml uses environment variables
-    ensure_env_variables_in_compose
-    
-    sudo docker compose build --no-cache
-    sudo docker compose up -d
-    log_success "All services rebuilt and started successfully!"
-    
-    # Show access information
-    if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
-        log_info "HTTPS is configured. Services available at:"
-        if [ "$HTTPS_PORT" = "443" ]; then
-            log_info "  🔒 https://localhost (Main hub)"
-        else
-            log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
-        fi
-        if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
-            log_info "  🔄 http://localhost -> redirects to HTTPS"
-        else
-            log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
-        fi
-        log_warning "If using self-signed certificates, accept the browser security warning."
+    if [ -n "$service" ]; then
+        log_info "Rebuilding and restarting $service service..."
+        sudo docker compose build --no-cache "$service"
+        sudo docker compose up -d "$service"
+        log_success "$service service rebuilt and started successfully!"
+        show_status
     else
-        log_info "Services available at:"
-        log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+        log_info "Rebuilding and restarting all services..."
+        sudo docker compose down
+        
+        # Handle SSL setup automatically
+        setup_ssl_auto "$cert_file" "$key_file"
+        
+        # Ensure docker-compose.yml uses environment variables
+        ensure_env_variables_in_compose
+        
+        sudo docker compose build --no-cache
+        sudo docker compose up -d
+        log_success "All services rebuilt and started successfully!"
+        
+        # Show access information
+        if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+            log_info "HTTPS is configured. Services available at:"
+            if [ "$HTTPS_PORT" = "443" ]; then
+                log_info "  🔒 https://localhost (Main hub)"
+            else
+                log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+            fi
+            if [ "$HTTP_REDIRECT_PORT" = "80" ]; then
+                log_info "  🔄 http://localhost -> redirects to HTTPS"
+            else
+                log_info "  🔄 http://localhost:$HTTP_REDIRECT_PORT -> redirects to HTTPS"
+            fi
+            log_warning "If using self-signed certificates, accept the browser security warning."
+        else
+            log_info "Services available at:"
+            log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+        fi
+        
+        show_status
+    fi
+}
+
+rebuild_only() {
+    local service="$2"
+    
+    if [ -z "$service" ]; then
+        log_error "Service name required for rebuild-only command"
+        echo "Usage: $0 rebuild-only <service>"
+        echo "Available services: engine, drawio, excalidraw, tldraw, tldraw-sync"
+        exit 1
     fi
     
-    show_status
+    log_info "Rebuilding $service service without restarting..."
+    sudo docker compose build --no-cache "$service"
+    log_success "$service service rebuilt successfully! Use 'restart $service' to apply changes."
 }
 
 clean_containers() {
@@ -1106,13 +1150,16 @@ case "$1" in
         start_services "$@"
         ;;
     stop)
-        stop_services
+        stop_services "$@"
         ;;
     restart)
         restart_services "$@"
         ;;
     rebuild)
         rebuild_services "$@"
+        ;;
+    rebuild-only)
+        rebuild_only "$@"
         ;;
     clean)
         clean_containers
