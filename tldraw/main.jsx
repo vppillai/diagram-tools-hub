@@ -14,8 +14,6 @@ import '@tldraw/tldraw/tldraw.css'
 const getBaseUrl = () => {
     const protocol = window.location.protocol
     const host = window.location.host
-    console.log('Current protocol:', protocol)
-    console.log('Current host:', host)
     return `${protocol}//${host}`
 }
 
@@ -24,8 +22,6 @@ const getWebSocketUrl = (roomId) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     const wsUrl = `${protocol}//${host}/tldraw-sync/connect/${roomId}`
-    console.log('WebSocket protocol:', protocol)
-    console.log('TLDraw Sync URI:', wsUrl)
     return wsUrl
 }
 
@@ -39,12 +35,10 @@ const getRoomId = () => {
     if (tldrawIndex !== -1 && pathParts.length > tldrawIndex + 1) {
         const roomId = pathParts[tldrawIndex + 1]
         if (roomId && roomId.trim()) {
-            console.log('Room ID from path:', roomId)
             return roomId
         }
     }
     
-    console.log('No room ID in path - using standalone mode')
     return null
 }
 
@@ -122,14 +116,14 @@ function App() {
     }, [])
 
     if (roomId) {
-        console.log('SYNC MODE - Room:', roomId)
+        // Room-based collaborative mode
         if (!isReady) {
-            console.log('Loading TLDraw with local store first...')
+            // Loading with local store for faster startup
         } else {
-            console.log('Ready to establish sync connection')
+            // Ready to establish sync connection
         }
     } else {
-        console.log('STANDALONE MODE - No sync')
+        // Standalone mode - no synchronization
     }
 
     return (
@@ -147,25 +141,25 @@ function App() {
 function SyncTldraw({ roomId }) {
     // Generate consistent user preferences for this session
     const [userPreferences, setUserPreferences] = React.useState(() => {
-        // Try to get existing user data from localStorage
-        const stored = localStorage.getItem('tldraw-user-preferences')
+        // Try to get existing user data from localStorage (room-specific if in a room)
+        const storageKey = roomId ? `tldraw-user-preferences-${roomId}` : 'tldraw-user-preferences'
+        const stored = localStorage.getItem(storageKey)
         if (stored) {
             try {
                 return JSON.parse(stored)
             } catch (e) {
-                console.warn('Failed to parse stored user preferences:', e)
+                // Failed to parse stored preferences, will generate new ones
             }
         }
         
-        // Generate new user preferences
+        // Generate new user preferences with unique name generation
         const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'violet', 'pink', 'grey']
-        const names = ['Superman', 'Batman', 'Wonder Woman', 'Spider-Man', 'Iron Man', 'Captain America', 'Thor', 'Hulk', 'Flash', 'Aquaman', 'Joker', 'Lex Luthor', 'Magneto', 'Loki', 'Green Goblin', 'Venom', 'Thanos', 'Ultron', 'Harley Quinn', 'Catwoman']
+        const baseNames = ['Superman', 'Batman', 'Wonder Woman', 'Spider-Man', 'Iron Man', 'Captain America', 'Thor', 'Hulk', 'Flash', 'Aquaman', 'Joker', 'Lex Luthor', 'Magneto', 'Loki', 'Green Goblin', 'Venom', 'Thanos', 'Ultron', 'Harley Quinn', 'Catwoman']
         
         // Generate a consistent user ID
         const userId = 'user-' + Math.random().toString(36).substring(2, 11)
         
         // Use a simple hash of the user ID to determine color and name indices
-        // This ensures the same user gets the same color/name across sessions
         const hashCode = (str) => {
             let hash = 0
             for (let i = 0; i < str.length; i++) {
@@ -178,18 +172,78 @@ function SyncTldraw({ roomId }) {
         
         const userHash = hashCode(userId)
         
+        // Generate unique name by checking existing names in localStorage
+        const generateUniqueName = () => {
+            const baseNameIndex = userHash % baseNames.length
+            const baseName = baseNames[baseNameIndex]
+            
+            // Get all existing user preferences from localStorage to avoid collisions
+            const existingNames = new Set()
+            
+            // Check localStorage for other user names in this room
+            const roomPrefix = roomId ? `tldraw-user-preferences-${roomId}` : 'tldraw-user-preferences'
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i)
+                if (key && key.startsWith(roomPrefix)) {
+                    try {
+                        const prefs = JSON.parse(localStorage.getItem(key))
+                        if (prefs && prefs.name) {
+                            existingNames.add(prefs.name)
+                        }
+                    } catch (e) {
+                        // Ignore invalid entries
+                    }
+                }
+            }
+            
+            // Also add some randomness to the base selection to spread out name collisions
+            const fallbackIndex = (userHash + Date.now()) % baseNames.length
+            const fallbackName = baseNames[fallbackIndex]
+            
+            // Try base name first
+            if (!existingNames.has(baseName)) {
+                return baseName
+            }
+            
+            // Try fallback name if different from base name
+            if (fallbackName !== baseName && !existingNames.has(fallbackName)) {
+                return fallbackName
+            }
+            
+            // Try numbered variations of the base name
+            for (let i = 2; i <= 20; i++) {
+                const numberedName = `${baseName} ${i}`
+                if (!existingNames.has(numberedName)) {
+                    return numberedName
+                }
+            }
+            
+            // Try numbered variations of the fallback name
+            for (let i = 2; i <= 20; i++) {
+                const numberedName = `${fallbackName} ${i}`
+                if (!existingNames.has(numberedName)) {
+                    return numberedName
+                }
+            }
+            
+            // Final fallback to timestamp-based unique name
+            const timestamp = Date.now().toString().slice(-4)
+            return `${baseName} ${timestamp}`
+        }
+        
         return {
             id: userId,
-            name: names[userHash % names.length],
+            name: generateUniqueName(),
             color: colors[userHash % colors.length],
             colorScheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         }
     })
 
-    // Save user preferences to localStorage when they change
+    // Save user preferences to localStorage when they change (room-specific)
     React.useEffect(() => {
-        localStorage.setItem('tldraw-user-preferences', JSON.stringify(userPreferences))
-    }, [userPreferences])
+        const storageKey = roomId ? `tldraw-user-preferences-${roomId}` : 'tldraw-user-preferences'
+        localStorage.setItem(storageKey, JSON.stringify(userPreferences))
+    }, [userPreferences, roomId])
 
     const store = useSync({
         uri: getWebSocketUrl(roomId),
@@ -238,14 +292,9 @@ function SyncTldraw({ roomId }) {
         }
     })
 
-    console.log('SyncTldraw - Store status:', store?.status || 'undefined')
-    console.log('SyncTldraw - Store object:', store)
-    console.log('SyncTldraw - User preferences:', userPreferences)
-    
+    // Monitor store status for debugging if needed
     React.useEffect(() => {
-        if (store) {
-            console.log('Sync store status changed to:', store.status)
-        }
+        // Store status tracking for internal use
     }, [store?.status])
 
     return (
@@ -260,12 +309,10 @@ function SyncTldraw({ roomId }) {
                 inferDarkMode
                 onMount={(editor) => {
                     editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
-                    console.log('TLDraw sync mode - external asset handler registered')
-                    console.log('TLDraw user info:', userPreferences)
+                    // External asset handler registered for URL unfurling
                     
                     if (typeof window !== 'undefined') {
                         window.editor = editor
-                        console.log('TLDraw editor mounted (sync mode)')
                     }
                 }}
             />
@@ -297,7 +344,7 @@ function SyncTldraw({ roomId }) {
 
 // Component for local-only TLDraw
 function LocalTldraw({ roomId }) {
-    console.log(roomId ? 'LocalTldraw - Room mode (transitioning to sync)' : 'LocalTldraw - Standalone mode')
+    // Local TLDraw instance for fast initial loading
 
     return (
         <>
@@ -308,11 +355,10 @@ function LocalTldraw({ roomId }) {
                 }}
                 inferDarkMode
                 onMount={(editor) => {
-                    console.log('TLDraw standalone mode - no external handlers')
+                    // Standalone mode - no external asset handlers needed
                     
                     if (typeof window !== 'undefined') {
                         window.editor = editor
-                        console.log(`TLDraw editor mounted (${roomId ? 'local-transitioning' : 'standalone'} mode)`)
                     }
                 }}
             />
