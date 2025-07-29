@@ -125,8 +125,8 @@ start_services() {
     # Stop any existing containers first to avoid conflicts
     sudo docker compose down 2>/dev/null || true
     
-    # Ensure docker-compose.yml uses environment variables
-    ensure_env_variables_in_compose
+    # Ensure all configuration files exist
+    ensure_configs_exist
     
     sudo docker compose up -d
     log_success "All services started successfully!"
@@ -179,8 +179,8 @@ restart_services() {
         # Handle SSL setup automatically
         setup_ssl_auto "$cert_file" "$key_file"
         
-        # Ensure docker-compose.yml uses environment variables
-        ensure_env_variables_in_compose
+        # Ensure all configuration files exist
+        ensure_configs_exist
         
         sudo docker compose up -d
         log_success "All services restarted successfully!"
@@ -221,8 +221,8 @@ rebuild_services() {
         # Handle SSL setup automatically
         setup_ssl_auto "$cert_file" "$key_file"
         
-        # Ensure docker-compose.yml uses environment variables
-        ensure_env_variables_in_compose
+        # Ensure all configuration files exist
+        ensure_configs_exist
         
         sudo docker compose build --no-cache
         sudo docker compose up -d
@@ -296,6 +296,9 @@ clean_rebuild() {
         # Clean everything
         sudo docker compose down --remove-orphans --volumes --rmi all
         sudo docker system prune -a -f --volumes
+        
+        # Ensure all configuration files exist before rebuild
+        ensure_configs_exist
         
         # Rebuild from scratch
         sudo docker compose build --no-cache
@@ -491,8 +494,8 @@ cleanup_containers() {
 create_https_nginx_config() {
     local nginx_conf="./engine/nginx.conf"
     
-    # Backup original configuration
-    if [ ! -f "$nginx_conf.backup" ]; then
+    # Backup original configuration only if it exists
+    if [ -f "$nginx_conf" ] && [ ! -f "$nginx_conf.backup" ]; then
         cp "$nginx_conf" "$nginx_conf.backup"
         log_info "Backed up original nginx configuration"
     fi
@@ -673,8 +676,8 @@ EOF
 update_docker_compose_https() {
     local compose_file="./docker-compose.yml"
     
-    # Backup original configuration
-    if [ ! -f "$compose_file.backup" ]; then
+    # Backup original configuration only if backup doesn't exist
+    if [ -f "$compose_file" ] && [ ! -f "$compose_file.backup" ]; then
         cp "$compose_file" "$compose_file.backup"
         log_info "Backed up original docker-compose configuration"
     fi
@@ -958,6 +961,31 @@ networks:
 EOF
 
     log_info "Created HTTP-only docker-compose configuration"
+}
+
+ensure_configs_exist() {
+    log_info "Ensuring all configuration files exist..."
+    
+    # Check if nginx.conf exists
+    if [ ! -f "./engine/nginx.conf" ]; then
+        log_info "nginx.conf not found, creating configuration..."
+        if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+            create_https_nginx_config
+        else
+            create_http_only_config
+        fi
+    fi
+    
+    # Check if docker-compose.yml exists or needs regeneration
+    if [ ! -f "./docker-compose.yml" ]; then
+        log_error "docker-compose.yml not found. This file should exist in the project."
+        exit 1
+    fi
+    
+    # Ensure environment variables are used in compose file
+    ensure_env_variables_in_compose
+    
+    log_info "Configuration files validated."
 }
 
 ensure_env_variables_in_compose() {
