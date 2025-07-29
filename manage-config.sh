@@ -1417,14 +1417,24 @@ show_tldraw_health_status() {
             # Get detailed health info
             local health_data=$(docker exec "$sync_container" wget -q -O - http://localhost:3001/api/health 2>/dev/null)
             if [ -n "$health_data" ]; then
-                local health_status=$(parse_json_value "$health_data" "status")
+                # Parse overall health status (first occurrence)
+                local health_status=$(echo "$health_data" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
                 echo "   🔍 Backend Status: $health_status"
                 
-                # Check memory warning
-                if echo "$health_data" | grep -q "warning"; then
-                    local memory_warning=$(echo "$health_data" | grep -o '"warning":"[^"]*"' | cut -d'"' -f4)
+                # Check for memory warnings in the nested memory check
+                if echo "$health_data" | grep -q '"memory".*"warning"'; then
+                    local memory_warning=$(echo "$health_data" | grep -o '"memory"[^}]*"warning":"[^"]*"' | grep -o '"warning":"[^"]*"' | cut -d'"' -f4)
                     echo "   ⚠️  Memory Warning: $memory_warning"
                 fi
+                
+                # Show individual component health
+                local memory_status=$(echo "$health_data" | grep -o '"memory":{"status":"[^"]*"' | cut -d'"' -f6)
+                local connections_status=$(echo "$health_data" | grep -o '"connections":{"status":"[^"]*"' | cut -d'"' -f6)
+                local storage_status=$(echo "$health_data" | grep -o '"storage":{"status":"[^"]*"' | cut -d'"' -f6)
+                
+                echo "   💾 Memory: $memory_status"
+                echo "   🔗 Connections: $connections_status" 
+                echo "   📁 Storage: $storage_status"
             fi
         else
             echo "   ❌ Health API: Not responding"

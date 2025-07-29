@@ -356,12 +356,17 @@ async function getHealthStatus() {
             }
         }
 
-        // Check memory usage (warn if over 80% of heap used)
+        // Check memory usage (warn if over 95% of heap used or RSS over 512MB)
         const memUsage = process.memoryUsage()
         const heapUsedPercent = (memUsage.heapUsed / memUsage.heapTotal) * 100
-        if (heapUsedPercent > 80) {
+        const rssMB = memUsage.rss / (1024 * 1024)
+        
+        if (heapUsedPercent > 95) {
             health.checks.memory.status = 'warning'
-            health.checks.memory.warning = `High memory usage: ${heapUsedPercent.toFixed(1)}%`
+            health.checks.memory.warning = `Critical heap usage: ${heapUsedPercent.toFixed(1)}%`
+        } else if (rssMB > 512) {
+            health.checks.memory.status = 'warning'
+            health.checks.memory.warning = `High RSS memory: ${rssMB.toFixed(1)}MB`
         }
 
         // Check directories
