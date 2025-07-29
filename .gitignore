@@ -9,6 +9,9 @@ certs/
 # Docker
 *.log
 
+# Generated configuration files
+engine/nginx.conf
+
 # Backup files
 *.backup
 config-backup-*.tar.gz

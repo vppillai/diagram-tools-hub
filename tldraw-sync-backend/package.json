@@ -1,0 +1,14 @@
+{
+  "name": "tldraw-sync-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@tldraw/sync-core": "^2.0.0",
+    "ws": "^8.18.0",
+    "unfurl.js": "^6.4.0"
+  }
+}

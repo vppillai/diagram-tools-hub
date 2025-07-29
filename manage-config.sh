@@ -442,7 +442,7 @@ cleanup_containers() {
     sudo docker compose down --remove-orphans 2>/dev/null || true
     
     # Remove specific containers that might conflict
-    sudo docker rm -f diagram-engine drawio-app excalidraw-app tldraw-app 2>/dev/null || true
+    sudo docker rm -f diagram-engine drawio-app excalidraw-app tldraw-app tldraw-sync-app 2>/dev/null || true
     
     # Remove networks that might conflict
     sudo docker network rm diagram-tools-network 2>/dev/null || true
@@ -490,6 +490,10 @@ http {
 
     upstream tldraw_backend {
         server tldraw:3000;
+    }
+
+    upstream tldraw_sync_backend {
+        server tldraw-sync:3001;
     }
 
     # HTTP to HTTPS redirect
@@ -566,7 +570,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # TLDraw reverse proxy
+        # TLDraw reverse proxy - handle both /tldraw/ and /tldraw/room-name
         location /tldraw {
             return 301 /tldraw/;
         }
@@ -578,7 +582,7 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             
-            # WebSocket support
+            # WebSocket support (for Vite dev server)
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -602,6 +606,22 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             add_header Content-Type text/css;
+        }
+
+        # TLDraw Sync reverse proxy for all endpoints
+        location /tldraw-sync/ {
+            # Rewrite /tldraw-sync/ to / for the backend
+            rewrite ^/tldraw-sync/(.*)$ /$1 break;
+            proxy_pass http://tldraw_sync_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
         }
 
         # Handle favicon.ico requests
@@ -650,14 +670,13 @@ services:
       - drawio
       - excalidraw
       - tldraw
+      - tldraw-sync
     restart: unless-stopped
 
   # Draw.io container
   drawio:
     image: jgraph/drawio
     container_name: drawio-app
-    ports:
-      - "8081:8080"
     environment:
       - DRAWIO_BASE_URL=/drawio
     restart: unless-stopped
@@ -666,8 +685,6 @@ services:
   excalidraw:
     image: excalidraw/excalidraw:latest
     container_name: excalidraw-app
-    ports:
-      - "8082:80"
     restart: unless-stopped
 
   # TLDraw container - using a custom build since there's no official image
@@ -676,8 +693,17 @@ services:
       context: ./tldraw
       dockerfile: Dockerfile
     container_name: tldraw-app
-    ports:
-      - "8083:3000"
+    restart: unless-stopped
+
+  # TLDraw Sync backend - real-time collaboration server
+  tldraw-sync:
+    build:
+      context: ./tldraw-sync-backend
+      dockerfile: Dockerfile
+    container_name: tldraw-sync-app
+    volumes:
+      - ./tldraw-sync-backend/.rooms:/app/.rooms
+      - ./tldraw-sync-backend/.assets:/app/.assets
     restart: unless-stopped
 
 networks:
@@ -711,6 +737,10 @@ http {
 
     upstream tldraw_backend {
         server tldraw:3000;
+    }
+
+    upstream tldraw_sync_backend {
+        server tldraw-sync:3001;
     }
 
     server {
@@ -768,7 +798,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # TLDraw reverse proxy
+        # TLDraw reverse proxy - handle both /tldraw/ and /tldraw/room-name
         location /tldraw {
             return 301 /tldraw/;
         }
@@ -780,7 +810,7 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             
-            # WebSocket support
+            # WebSocket support (for Vite dev server)
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -804,6 +834,22 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             add_header Content-Type text/css;
+        }
+
+        # TLDraw Sync reverse proxy for all endpoints
+        location /tldraw-sync/ {
+            # Rewrite /tldraw-sync/ to / for the backend
+            rewrite ^/tldraw-sync/(.*)$ /$1 break;
+            proxy_pass http://tldraw_sync_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
         }
 
         # Handle favicon.ico requests
@@ -843,14 +889,13 @@ services:
       - drawio
       - excalidraw
       - tldraw
+      - tldraw-sync
     restart: unless-stopped
 
   # Draw.io container
   drawio:
     image: jgraph/drawio
     container_name: drawio-app
-    ports:
-      - "8081:8080"
     environment:
       - DRAWIO_BASE_URL=/drawio
     restart: unless-stopped
@@ -859,8 +904,6 @@ services:
   excalidraw:
     image: excalidraw/excalidraw:latest
     container_name: excalidraw-app
-    ports:
-      - "8082:80"
     restart: unless-stopped
 
   # TLDraw container - using a custom build since there's no official image
@@ -869,8 +912,17 @@ services:
       context: ./tldraw
       dockerfile: Dockerfile
     container_name: tldraw-app
-    ports:
-      - "8083:3000"
+    restart: unless-stopped
+
+  # TLDraw Sync backend - real-time collaboration server
+  tldraw-sync:
+    build:
+      context: ./tldraw-sync-backend
+      dockerfile: Dockerfile
+    container_name: tldraw-sync-app
+    volumes:
+      - ./tldraw-sync-backend/.rooms:/app/.rooms
+      - ./tldraw-sync-backend/.assets:/app/.assets
     restart: unless-stopped
 
 networks:
