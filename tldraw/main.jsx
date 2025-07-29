@@ -197,31 +197,50 @@ function SyncTldraw({ roomId }) {
         userInfo: userPreferences, // Pass user info for presence sync
     })
 
+    // State to track pending name during editing
+    const [pendingName, setPendingName] = React.useState(null)
+    
     // Debounced name update to prevent per-character syncing
     const debouncedNameUpdate = React.useCallback(
         React.useMemo(() => {
             let timeoutId
             return (newName) => {
+                setPendingName(newName) // Immediately show the new name
                 clearTimeout(timeoutId)
                 timeoutId = setTimeout(() => {
                     setUserPreferences(prev => ({ ...prev, name: newName }))
+                    setPendingName(null) // Clear pending name after commit
                 }, 1000) // 1 second delay after user stops typing
             }
         }, []),
         []
     )
     
-    // Create user object for Tldraw component with debounced name updates
+    // Function to immediately commit name changes (for enter/blur)
+    const commitNameChange = React.useCallback((newName) => {
+        setUserPreferences(prev => ({ ...prev, name: newName }))
+        setPendingName(null)
+    }, [])
+    
+    // Create user object for Tldraw component with proper name handling
     const user = useTldrawUser({ 
-        userPreferences,
+        userPreferences: pendingName ? { ...userPreferences, name: pendingName } : userPreferences,
         setUserPreferences: (update) => {
             if (typeof update === 'function') {
-                const newPrefs = update(userPreferences)
+                const currentPrefs = pendingName ? { ...userPreferences, name: pendingName } : userPreferences
+                const newPrefs = update(currentPrefs)
                 
                 // Check if this is a name change
                 if (newPrefs.name !== userPreferences.name) {
-                    // Use debounced update for name changes
-                    debouncedNameUpdate(newPrefs.name)
+                    // Check if this looks like a "commit" (like from enter/blur)
+                    // TLDraw might signal this by calling with the same name twice
+                    if (newPrefs.name === pendingName) {
+                        // This is a commit - apply immediately
+                        commitNameChange(newPrefs.name)
+                    } else {
+                        // This is typing - use debounced update
+                        debouncedNameUpdate(newPrefs.name)
+                    }
                 } else {
                     // Non-name changes apply immediately
                     setUserPreferences(newPrefs)
@@ -229,8 +248,14 @@ function SyncTldraw({ roomId }) {
             } else {
                 // Handle direct object updates
                 if (update.name && update.name !== userPreferences.name) {
-                    // Use debounced update for name changes
-                    debouncedNameUpdate(update.name)
+                    // Check if this looks like a commit
+                    if (update.name === pendingName) {
+                        // This is a commit - apply immediately
+                        commitNameChange(update.name)
+                    } else {
+                        // This is typing - use debounced update
+                        debouncedNameUpdate(update.name)
+                    }
                 } else {
                     setUserPreferences(prev => ({ ...prev, ...update }))
                 }
