@@ -6,6 +6,7 @@ import {
     getHashForString,
     Tldraw,
     uniqueId,
+    useTldrawUser,
 } from '@tldraw/tldraw'
 import '@tldraw/tldraw/tldraw.css'
 
@@ -144,13 +145,67 @@ function App() {
 
 // Component for sync-enabled TLDraw
 function SyncTldraw({ roomId }) {
+    // Generate consistent user preferences for this session
+    const [userPreferences, setUserPreferences] = React.useState(() => {
+        // Try to get existing user data from localStorage
+        const stored = localStorage.getItem('tldraw-user-preferences')
+        if (stored) {
+            try {
+                return JSON.parse(stored)
+            } catch (e) {
+                console.warn('Failed to parse stored user preferences:', e)
+            }
+        }
+        
+        // Generate new user preferences
+        const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'indigo', 'violet', 'pink', 'grey']
+        const names = ['Superman', 'Batman', 'Wonder Woman', 'Spider-Man', 'Iron Man', 'Captain America', 'Thor', 'Hulk', 'Flash', 'Aquaman', 'Joker', 'Lex Luthor', 'Magneto', 'Loki', 'Green Goblin', 'Venom', 'Thanos', 'Ultron', 'Harley Quinn', 'Catwoman']
+        
+        // Generate a consistent user ID
+        const userId = 'user-' + Math.random().toString(36).substring(2, 11)
+        
+        // Use a simple hash of the user ID to determine color and name indices
+        // This ensures the same user gets the same color/name across sessions
+        const hashCode = (str) => {
+            let hash = 0
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i)
+                hash = ((hash << 5) - hash) + char
+                hash = hash & hash // Convert to 32-bit integer
+            }
+            return Math.abs(hash)
+        }
+        
+        const userHash = hashCode(userId)
+        
+        return {
+            id: userId,
+            name: names[userHash % names.length],
+            color: colors[userHash % colors.length],
+            colorScheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
+    })
+
+    // Save user preferences to localStorage when they change
+    React.useEffect(() => {
+        localStorage.setItem('tldraw-user-preferences', JSON.stringify(userPreferences))
+    }, [userPreferences])
+
     const store = useSync({
         uri: getWebSocketUrl(roomId),
         assets: multiplayerAssets,
+        userInfo: userPreferences, // Pass user info for presence sync
+    })
+
+    // Create user object for Tldraw component - allow any user-provided name
+    const user = useTldrawUser({ 
+        userPreferences, 
+        setUserPreferences
     })
 
     console.log('SyncTldraw - Store status:', store?.status || 'undefined')
     console.log('SyncTldraw - Store object:', store)
+    console.log('SyncTldraw - User preferences:', userPreferences)
     
     React.useEffect(() => {
         if (store) {
@@ -162,6 +217,7 @@ function SyncTldraw({ roomId }) {
         <>
             <Tldraw
                 store={store}
+                user={user}
                 options={{
                     maxImageDimension: 5000,
                     maxAssetSize: 10 * 1024 * 1024, // 10mb
@@ -170,6 +226,7 @@ function SyncTldraw({ roomId }) {
                 onMount={(editor) => {
                     editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
                     console.log('TLDraw sync mode - external asset handler registered')
+                    console.log('TLDraw user info:', userPreferences)
                     
                     if (typeof window !== 'undefined') {
                         window.editor = editor
@@ -178,10 +235,10 @@ function SyncTldraw({ roomId }) {
                 }}
             />
             
-            {/* Room status indicator */}
+            {/* Room status indicator - positioned above debug bar */}
             <div style={{
                 position: 'absolute',
-                bottom: 10,
+                bottom: 50,
                 right: 10,
                 background: 'rgba(0,0,0,0.8)',
                 color: 'white',
@@ -196,6 +253,7 @@ function SyncTldraw({ roomId }) {
                 gap: '6px'
             }}>
                 <span>Room: {roomId}</span>
+                <span style={{ color: userPreferences.color }}>({userPreferences.name})</span>
                 <span>{store?.connectionStatus === 'online' ? '🟢' : store?.connectionStatus === 'offline' ? '🔴' : store?.status === 'loading' ? '🟡' : '⚪'}</span>
             </div>
         </>
