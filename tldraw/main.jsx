@@ -197,10 +197,45 @@ function SyncTldraw({ roomId }) {
         userInfo: userPreferences, // Pass user info for presence sync
     })
 
-    // Create user object for Tldraw component - allow any user-provided name
+    // Debounced name update to prevent per-character syncing
+    const debouncedNameUpdate = React.useCallback(
+        React.useMemo(() => {
+            let timeoutId
+            return (newName) => {
+                clearTimeout(timeoutId)
+                timeoutId = setTimeout(() => {
+                    setUserPreferences(prev => ({ ...prev, name: newName }))
+                }, 1000) // 1 second delay after user stops typing
+            }
+        }, []),
+        []
+    )
+    
+    // Create user object for Tldraw component with debounced name updates
     const user = useTldrawUser({ 
-        userPreferences, 
-        setUserPreferences
+        userPreferences,
+        setUserPreferences: (update) => {
+            if (typeof update === 'function') {
+                const newPrefs = update(userPreferences)
+                
+                // Check if this is a name change
+                if (newPrefs.name !== userPreferences.name) {
+                    // Use debounced update for name changes
+                    debouncedNameUpdate(newPrefs.name)
+                } else {
+                    // Non-name changes apply immediately
+                    setUserPreferences(newPrefs)
+                }
+            } else {
+                // Handle direct object updates
+                if (update.name && update.name !== userPreferences.name) {
+                    // Use debounced update for name changes
+                    debouncedNameUpdate(update.name)
+                } else {
+                    setUserPreferences(prev => ({ ...prev, ...update }))
+                }
+            }
+        }
     })
 
     console.log('SyncTldraw - Store status:', store?.status || 'undefined')
