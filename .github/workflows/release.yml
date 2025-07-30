@@ -156,6 +156,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate nginx configuration
+        run: |
+          # Generate nginx.conf using manage script before building
+          chmod +x ./manage-config.sh
+          ./manage-config.sh http-only  # This generates the nginx.conf file
+          echo "✅ nginx.conf generated for Docker build"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
