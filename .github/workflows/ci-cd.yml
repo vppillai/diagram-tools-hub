@@ -44,6 +44,10 @@ jobs:
 
       - name: Build and test Engine (Frontend)
         run: |
+          # Generate nginx.conf using manage script before building
+          chmod +x ./manage-config.sh
+          ./manage-config.sh http-only  # This generates the nginx.conf file
+          
           cd ./engine
           docker build -t engine:test .
           echo "✅ Engine image built successfully"
