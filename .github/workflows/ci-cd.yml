@@ -53,11 +53,11 @@ jobs:
           docker compose config
           echo "✅ Docker Compose configuration is valid"
 
-      - name: Test container startup
+      - name: Test full system startup with manage script
         run: |
-          echo "🧪 Testing container startup..."
+          echo "🧪 Testing full system startup with manage script..."
           
-          # Test TLDraw container startup
+          # Test individual container builds first
           echo "Testing TLDraw container..."
           docker run --rm -d --name tldraw-test tldraw:test
           sleep 5
@@ -69,34 +69,35 @@ jobs:
           docker stop tldraw-test
           echo "✅ TLDraw container started successfully"
           
-          # Test Engine container startup
-          echo "Testing Engine container..."
-          docker run --rm -d --name engine-test -p 8080:80 engine:test
-          sleep 5
-          if ! docker ps | grep -q engine-test; then
-            echo "❌ Engine container failed to start"
-            echo "Container logs:"
-            docker logs engine-test 2>/dev/null || echo "No logs available"
-            echo "Container inspect:"
-            docker inspect engine-test 2>/dev/null || echo "Container not found"
-            exit 1
-          fi
+          # Test using the manage script (HTTP-only mode for CI)
+          echo "Testing full system with manage script..."
+          chmod +x ./manage-config.sh
           
-          # Test if nginx is responding
-          echo "Testing Engine container health..."
-          sleep 2
+          # Use HTTP-only mode to avoid SSL certificate issues in CI
+          ./manage-config.sh http-only
+          ./manage-config.sh start
+          
+          # Wait for services to start
+          sleep 15
+          
+          # Test if the system is responding
+          echo "Testing system health..."
           if curl -f http://localhost:8080/health >/dev/null 2>&1; then
-            echo "✅ Engine container health check passed"
+            echo "✅ System health check passed"
           else
-            echo "⚠️ Engine container started but health check failed"
-            echo "Container logs:"
-            docker logs engine-test
+            echo "⚠️ System health check failed"
+            echo "Service logs:"
+            ./manage-config.sh logs
           fi
           
-          docker stop engine-test
-          echo "✅ Engine container started successfully"
+          # Check container status
+          echo "Checking container status..."
+          ./manage-config.sh status
           
-          echo "✅ All containers started successfully"
+          # Stop services
+          ./manage-config.sh stop
+          
+          echo "✅ Full system test completed"
 
 
 

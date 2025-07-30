@@ -3,8 +3,8 @@ FROM nginx:alpine
 # Install curl for health checks
 RUN apk add --no-cache curl
 
-# Copy nginx configuration (use simplified version for testing)
-COPY nginx-test.conf /etc/nginx/nginx.conf
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy static files
 COPY html/ /usr/share/nginx/html/
