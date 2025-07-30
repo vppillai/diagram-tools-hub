@@ -90,8 +90,8 @@ jobs:
             echo "✅ System health check passed"
           else
             echo "⚠️ System health check failed"
-            echo "Service logs:"
-            ./manage-config.sh logs
+            echo "Service logs (last 50 lines):"
+            docker compose logs --tail=50
           fi
           
           # Check container status
