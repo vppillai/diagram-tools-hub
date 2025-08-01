@@ -75,6 +75,42 @@ const multiplayerAssets = {
     },
 }
 
+// Shared color configuration for keyboard shortcuts
+const COLOR_SHORTCUTS = {
+    colorMap: {
+        '1': 'black',
+        '2': 'grey', 
+        '3': 'green',
+        '4': 'yellow',
+        '5': 'red',
+        '6': 'blue',
+        '7': 'orange', 
+        '8': 'indigo',
+        '9': 'violet'
+    },
+    colorRgbMap: {
+        'red': 'rgb(224, 51, 51)',
+        'blue': 'rgb(51, 102, 204)', 
+        'green': 'rgb(68, 170, 68)',
+        'yellow': 'rgb(255, 193, 61)',
+        'orange': 'rgb(255, 127, 0)',
+        'indigo': 'rgb(68, 90, 158)',
+        'violet': 'rgb(142, 68, 173)',
+        'grey': 'rgb(153, 153, 153)',
+        'black': 'rgb(0, 0, 0)',
+        // Alternative color names
+        'light-blue': 'rgb(68, 90, 158)',
+        'purple': 'rgb(142, 68, 173)',
+        'gray': 'rgb(153, 153, 153)'
+    },
+    // Alternative names TLDraw might use
+    colorAliases: {
+        'indigo': ['purple', 'light-blue', 'navy', 'dark-blue'],
+        'violet': ['purple', 'magenta', 'pink'],
+        'grey': ['gray']
+    }
+}
+
 // URL unfurling for bookmarks
 async function unfurlBookmarkUrl({ url }) {
     const asset = {
@@ -345,53 +381,79 @@ function SyncTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
-                    // Optimized keyboard shortcuts for color switching
-                    const colorMap = {
-                        '1': 'black',
-                        '2': 'red', 
-                        '3': 'orange',
-                        '4': 'yellow',
-                        '5': 'green',
-                        '6': 'blue',
-                        '7': 'indigo', 
-                        '8': 'violet',
-                        '9': 'white'
-                    }
+                    // Set default pen size to small on initial load only
+                    setTimeout(() => {
+                        try {
+                            // Try to click the small size button in the UI once on startup
+                            const smallSizeButton = document.querySelector('[data-testid="style.size.s"], [aria-label*="small"], [title*="small"]')
+                            if (smallSizeButton) {
+                                smallSizeButton.click()
+                            }
+                        } catch (error) {
+                            console.log('Could not set initial small pen size')
+                        }
+                    }, 500)
                     
-                    // Color RGB values for efficient matching
-                    const colorRgbMap = {
-                        'red': 'rgb(224, 51, 51)',
-                        'blue': 'rgb(51, 102, 204)',
-                        'green': 'rgb(68, 170, 68)',
-                        'yellow': 'rgb(255, 193, 61)',
-                        'orange': 'rgb(255, 127, 0)',
-                        'violet': 'rgb(142, 68, 173)',
-                        'black': 'rgb(0, 0, 0)',
-                        'white': 'rgb(255, 255, 255)'
-                    }
+                    // Use shared color configuration
+                    const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
                     
                     const findColorButton = (color) => {
-                        // Priority 1: Direct color button selectors
-                        const directSelectors = [
-                            `[data-testid="style.color.${color}"]`,
-                            `[data-testid*="color"][data-testid*="${color}"]`,
-                            `[aria-label*="color ${color}"]`
-                        ]
+                        // Get all possible names for this color
+                        const colorNames = [color, ...(colorAliases[color] || [])]
                         
-                        for (const selector of directSelectors) {
-                            const button = document.querySelector(selector)
-                            if (button) return button
+                        
+                        // Priority 1: Direct color button selectors
+                        for (const colorName of colorNames) {
+                            const directSelectors = [
+                                `[data-testid="style.color.${colorName}"]`,
+                                `[data-testid*="color"][data-testid*="${colorName}"]`,
+                                `[aria-label*="color ${colorName}"]`,
+                                `[aria-label*="${colorName}"]`,
+                                `[title*="${colorName}"]`
+                            ]
+                            
+                            for (const selector of directSelectors) {
+                                const button = document.querySelector(selector)
+                                if (button) {
+                                    return button
+                                }
+                            }
                         }
                         
                         // Priority 2: Style panel buttons with matching background color
-                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button')
-                        const targetRgb = colorRgbMap[color]
+                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button, [data-testid*="color"] button')
                         
-                        if (targetRgb) {
-                            for (const button of styleButtons) {
-                                const bgColor = window.getComputedStyle(button).backgroundColor
-                                if (bgColor === targetRgb && button.closest('[data-testid*="color"], .tl-style-panel')) {
-                                    return button
+                        // Try multiple RGB values for this color
+                        const possibleRgbValues = [
+                            colorRgbMap[color],
+                            ...colorNames.map(name => colorRgbMap[name]).filter(Boolean)
+                        ]
+                        
+                        for (const targetRgb of possibleRgbValues) {
+                            if (targetRgb) {
+                                for (const button of styleButtons) {
+                                    const bgColor = window.getComputedStyle(button).backgroundColor
+                                    if (bgColor === targetRgb) {
+                                        return button
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Priority 3: Broader search by color name in attributes
+                        const allButtons = document.querySelectorAll('button, [role="button"]')
+                        for (const colorName of colorNames) {
+                            for (const button of allButtons) {
+                                const testId = button.getAttribute('data-testid') || ''
+                                const ariaLabel = button.getAttribute('aria-label') || ''
+                                const title = button.getAttribute('title') || ''
+                                
+                                if (testId.includes(colorName) || ariaLabel.toLowerCase().includes(colorName) || title.toLowerCase().includes(colorName)) {
+                                    // Make sure it's likely a color button
+                                    if (testId.includes('color') || ariaLabel.includes('color') || title.includes('color') || 
+                                        button.closest('[data-testid*="color"], .tl-style-panel')) {
+                                        return button
+                                    }
                                 }
                             }
                         }
@@ -410,6 +472,7 @@ function SyncTldraw({ roomId }) {
                         
                         const color = colorMap[e.key]
                         if (!color) return
+                        
                         
                         // Completely block TLDraw from processing this key
                         e.preventDefault()
@@ -499,53 +562,79 @@ function LocalTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
-                    // Optimized keyboard shortcuts for color switching
-                    const colorMap = {
-                        '1': 'black',
-                        '2': 'red', 
-                        '3': 'orange',
-                        '4': 'yellow',
-                        '5': 'green',
-                        '6': 'blue',
-                        '7': 'indigo', 
-                        '8': 'violet',
-                        '9': 'white'
-                    }
+                    // Set default pen size to small on initial load only
+                    setTimeout(() => {
+                        try {
+                            // Try to click the small size button in the UI once on startup
+                            const smallSizeButton = document.querySelector('[data-testid="style.size.s"], [aria-label*="small"], [title*="small"]')
+                            if (smallSizeButton) {
+                                smallSizeButton.click()
+                            }
+                        } catch (error) {
+                            console.log('Could not set initial small pen size')
+                        }
+                    }, 500)
                     
-                    // Color RGB values for efficient matching
-                    const colorRgbMap = {
-                        'red': 'rgb(224, 51, 51)',
-                        'blue': 'rgb(51, 102, 204)',
-                        'green': 'rgb(68, 170, 68)',
-                        'yellow': 'rgb(255, 193, 61)',
-                        'orange': 'rgb(255, 127, 0)',
-                        'violet': 'rgb(142, 68, 173)',
-                        'black': 'rgb(0, 0, 0)',
-                        'white': 'rgb(255, 255, 255)'
-                    }
+                    // Use shared color configuration
+                    const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
                     
                     const findColorButton = (color) => {
-                        // Priority 1: Direct color button selectors
-                        const directSelectors = [
-                            `[data-testid="style.color.${color}"]`,
-                            `[data-testid*="color"][data-testid*="${color}"]`,
-                            `[aria-label*="color ${color}"]`
-                        ]
+                        // Get all possible names for this color
+                        const colorNames = [color, ...(colorAliases[color] || [])]
                         
-                        for (const selector of directSelectors) {
-                            const button = document.querySelector(selector)
-                            if (button) return button
+                        
+                        // Priority 1: Direct color button selectors
+                        for (const colorName of colorNames) {
+                            const directSelectors = [
+                                `[data-testid="style.color.${colorName}"]`,
+                                `[data-testid*="color"][data-testid*="${colorName}"]`,
+                                `[aria-label*="color ${colorName}"]`,
+                                `[aria-label*="${colorName}"]`,
+                                `[title*="${colorName}"]`
+                            ]
+                            
+                            for (const selector of directSelectors) {
+                                const button = document.querySelector(selector)
+                                if (button) {
+                                    return button
+                                }
+                            }
                         }
                         
                         // Priority 2: Style panel buttons with matching background color
-                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button')
-                        const targetRgb = colorRgbMap[color]
+                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button, [data-testid*="color"] button')
                         
-                        if (targetRgb) {
-                            for (const button of styleButtons) {
-                                const bgColor = window.getComputedStyle(button).backgroundColor
-                                if (bgColor === targetRgb && button.closest('[data-testid*="color"], .tl-style-panel')) {
-                                    return button
+                        // Try multiple RGB values for this color
+                        const possibleRgbValues = [
+                            colorRgbMap[color],
+                            ...colorNames.map(name => colorRgbMap[name]).filter(Boolean)
+                        ]
+                        
+                        for (const targetRgb of possibleRgbValues) {
+                            if (targetRgb) {
+                                for (const button of styleButtons) {
+                                    const bgColor = window.getComputedStyle(button).backgroundColor
+                                    if (bgColor === targetRgb) {
+                                        return button
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Priority 3: Broader search by color name in attributes
+                        const allButtons = document.querySelectorAll('button, [role="button"]')
+                        for (const colorName of colorNames) {
+                            for (const button of allButtons) {
+                                const testId = button.getAttribute('data-testid') || ''
+                                const ariaLabel = button.getAttribute('aria-label') || ''
+                                const title = button.getAttribute('title') || ''
+                                
+                                if (testId.includes(colorName) || ariaLabel.toLowerCase().includes(colorName) || title.toLowerCase().includes(colorName)) {
+                                    // Make sure it's likely a color button
+                                    if (testId.includes('color') || ariaLabel.includes('color') || title.includes('color') || 
+                                        button.closest('[data-testid*="color"], .tl-style-panel')) {
+                                        return button
+                                    }
                                 }
                             }
                         }
@@ -564,6 +653,7 @@ function LocalTldraw({ roomId }) {
                         
                         const color = colorMap[e.key]
                         if (!color) return
+                        
                         
                         // Completely block TLDraw from processing this key
                         e.preventDefault()
