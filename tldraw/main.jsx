@@ -4,6 +4,8 @@ import { useSync } from '@tldraw/sync'
 import {
     AssetRecordType,
     getHashForString,
+    getSnapshot,
+    loadSnapshot,
     Tldraw,
     uniqueId,
     useTldrawUser,
@@ -264,14 +266,19 @@ function SyncTldraw({ roomId }) {
     // No complex activity tracking - keep it simple
 
     // Create sync store with basic tab visibility info
+    const wsUrl = getWebSocketUrl(roomId)
+    console.log('TLDraw sync connecting to:', wsUrl)
+    
     const store = useSync({
-        uri: getWebSocketUrl(roomId),
+        uri: wsUrl,
         assets: multiplayerAssets,
         userInfo: {
             ...userPreferences,
             // Only track tab visibility - simple and non-intrusive
             isTabActive: isTabActive
         },
+        // Prevent direct HTTP calls by providing explicit URLs
+        pingUrl: `${getBaseUrl()}/tldraw-sync/ping`,
     })
 
     // Simple debounced name update - only update state after delay
@@ -337,6 +344,96 @@ function SyncTldraw({ roomId }) {
                     if (typeof window !== 'undefined') {
                         window.editor = editor
                     }
+                    
+                    // Optimized keyboard shortcuts for color switching
+                    const colorMap = {
+                        '1': 'black',
+                        '2': 'red', 
+                        '3': 'orange',
+                        '4': 'yellow',
+                        '5': 'green',
+                        '6': 'blue',
+                        '7': 'indigo', 
+                        '8': 'violet',
+                        '9': 'white'
+                    }
+                    
+                    // Color RGB values for efficient matching
+                    const colorRgbMap = {
+                        'red': 'rgb(224, 51, 51)',
+                        'blue': 'rgb(51, 102, 204)',
+                        'green': 'rgb(68, 170, 68)',
+                        'yellow': 'rgb(255, 193, 61)',
+                        'orange': 'rgb(255, 127, 0)',
+                        'violet': 'rgb(142, 68, 173)',
+                        'black': 'rgb(0, 0, 0)',
+                        'white': 'rgb(255, 255, 255)'
+                    }
+                    
+                    const findColorButton = (color) => {
+                        // Priority 1: Direct color button selectors
+                        const directSelectors = [
+                            `[data-testid="style.color.${color}"]`,
+                            `[data-testid*="color"][data-testid*="${color}"]`,
+                            `[aria-label*="color ${color}"]`
+                        ]
+                        
+                        for (const selector of directSelectors) {
+                            const button = document.querySelector(selector)
+                            if (button) return button
+                        }
+                        
+                        // Priority 2: Style panel buttons with matching background color
+                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button')
+                        const targetRgb = colorRgbMap[color]
+                        
+                        if (targetRgb) {
+                            for (const button of styleButtons) {
+                                const bgColor = window.getComputedStyle(button).backgroundColor
+                                if (bgColor === targetRgb && button.closest('[data-testid*="color"], .tl-style-panel')) {
+                                    return button
+                                }
+                            }
+                        }
+                        
+                        return null
+                    }
+                    
+                    const handleKeydown = (e) => {
+                        // Skip if typing in input fields or using modifiers
+                        if (e.target.tagName === 'INPUT' || 
+                            e.target.tagName === 'TEXTAREA' || 
+                            e.target.isContentEditable ||
+                            e.ctrlKey || e.metaKey || e.altKey) {
+                            return
+                        }
+                        
+                        const color = colorMap[e.key]
+                        if (!color) return
+                        
+                        // Completely block TLDraw from processing this key
+                        e.preventDefault()
+                        e.stopPropagation()
+                        e.stopImmediatePropagation()
+                        
+                        // Use requestAnimationFrame for better performance than setTimeout
+                        requestAnimationFrame(() => {
+                            const button = findColorButton(color)
+                            if (button) {
+                                button.click()
+                            }
+                        })
+                        
+                        return false
+                    }
+                    
+                    // Add event listener with capture phase to intercept before TLDraw
+                    document.addEventListener('keydown', handleKeydown, true)
+                    
+                    // Cleanup function to remove event listener
+                    return () => {
+                        document.removeEventListener('keydown', handleKeydown, true)
+                    }
                 }}
             />
             
@@ -372,6 +469,7 @@ function SyncTldraw({ roomId }) {
                 {!isTabActive && <span title="Tab is inactive">📱</span>}
             </div>
             
+            
         </>
     )
 }
@@ -401,13 +499,98 @@ function LocalTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
+                    // Optimized keyboard shortcuts for color switching
+                    const colorMap = {
+                        '1': 'black',
+                        '2': 'red', 
+                        '3': 'orange',
+                        '4': 'yellow',
+                        '5': 'green',
+                        '6': 'blue',
+                        '7': 'indigo', 
+                        '8': 'violet',
+                        '9': 'white'
+                    }
+                    
+                    // Color RGB values for efficient matching
+                    const colorRgbMap = {
+                        'red': 'rgb(224, 51, 51)',
+                        'blue': 'rgb(51, 102, 204)',
+                        'green': 'rgb(68, 170, 68)',
+                        'yellow': 'rgb(255, 193, 61)',
+                        'orange': 'rgb(255, 127, 0)',
+                        'violet': 'rgb(142, 68, 173)',
+                        'black': 'rgb(0, 0, 0)',
+                        'white': 'rgb(255, 255, 255)'
+                    }
+                    
+                    const findColorButton = (color) => {
+                        // Priority 1: Direct color button selectors
+                        const directSelectors = [
+                            `[data-testid="style.color.${color}"]`,
+                            `[data-testid*="color"][data-testid*="${color}"]`,
+                            `[aria-label*="color ${color}"]`
+                        ]
+                        
+                        for (const selector of directSelectors) {
+                            const button = document.querySelector(selector)
+                            if (button) return button
+                        }
+                        
+                        // Priority 2: Style panel buttons with matching background color
+                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button')
+                        const targetRgb = colorRgbMap[color]
+                        
+                        if (targetRgb) {
+                            for (const button of styleButtons) {
+                                const bgColor = window.getComputedStyle(button).backgroundColor
+                                if (bgColor === targetRgb && button.closest('[data-testid*="color"], .tl-style-panel')) {
+                                    return button
+                                }
+                            }
+                        }
+                        
+                        return null
+                    }
+                    
+                    const handleKeydown = (e) => {
+                        // Skip if typing in input fields or using modifiers
+                        if (e.target.tagName === 'INPUT' || 
+                            e.target.tagName === 'TEXTAREA' || 
+                            e.target.isContentEditable ||
+                            e.ctrlKey || e.metaKey || e.altKey) {
+                            return
+                        }
+                        
+                        const color = colorMap[e.key]
+                        if (!color) return
+                        
+                        // Completely block TLDraw from processing this key
+                        e.preventDefault()
+                        e.stopPropagation()
+                        e.stopImmediatePropagation()
+                        
+                        // Use requestAnimationFrame for better performance than setTimeout
+                        requestAnimationFrame(() => {
+                            const button = findColorButton(color)
+                            if (button) {
+                                button.click()
+                            }
+                        })
+                        
+                        return false
+                    }
+                    
+                    // Add event listener with capture phase to intercept before TLDraw
+                    document.addEventListener('keydown', handleKeydown, true)
+                    
                     // Set up persistence using editor events
                     let saveTimeout
                     const handleChange = () => {
                         clearTimeout(saveTimeout)
                         saveTimeout = setTimeout(() => {
                             try {
-                                const snapshot = editor.store.getSnapshot()
+                                const snapshot = getSnapshot(editor.store)
                                 localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
                             } catch (error) {
                                 console.warn('Failed to save document:', error)
@@ -424,14 +607,20 @@ function LocalTldraw({ roomId }) {
                             const saved = localStorage.getItem(STORAGE_KEY)
                             if (saved) {
                                 const snapshot = JSON.parse(saved)
-                                editor.store.loadSnapshot(snapshot)
+                                loadSnapshot(editor.store, snapshot)
                             }
                         } catch (error) {
                             console.warn('Failed to load saved document:', error)
                         }
                     }, 100)
+                    
+                    // Cleanup function to remove event listener
+                    return () => {
+                        document.removeEventListener('keydown', handleKeydown, true)
+                    }
                 }}
             />
+            
             
             {/* Loading indicator for room mode */}
             {roomId && (
