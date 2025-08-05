@@ -472,10 +472,10 @@ function SyncTldraw({ roomId }) {
                         }
                         
                         const color = colorMap[e.key]
-                        if (!color) return
+                        if (!color) return // Let TLDraw handle non-color keys (like Delete, Arrow keys, etc.)
                         
                         
-                        // Completely block TLDraw from processing this key
+                        // Only block TLDraw from processing color shortcut keys
                         e.preventDefault()
                         e.stopPropagation()
                         e.stopImmediatePropagation()
@@ -653,10 +653,10 @@ function LocalTldraw({ roomId }) {
                         }
                         
                         const color = colorMap[e.key]
-                        if (!color) return
+                        if (!color) return // Let TLDraw handle non-color keys (like Delete, Arrow keys, etc.)
                         
                         
-                        // Completely block TLDraw from processing this key
+                        // Only block TLDraw from processing color shortcut keys
                         e.preventDefault()
                         e.stopPropagation()
                         e.stopImmediatePropagation()

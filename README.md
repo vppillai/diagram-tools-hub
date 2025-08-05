@@ -10,12 +10,52 @@ A unified Docker-based platform that integrates three powerful diagramming tools
 - **Excalidraw** - Hand-drawn style diagrams and wireframes  
 - **TLDraw** - Modern collaborative drawing canvas with real-time multi-user collaboration
 
+## ✨ Key Features
+
+### 🚀 **Production-Ready Architecture**
+- **HTTPS by Default**: Auto-generated SSL certificates with modern TLS configuration
+- **Reverse Proxy**: Nginx-based routing with WebSocket support
+- **Docker Orchestration**: Multi-service deployment with health checks
+- **Auto-Start Service**: Systemd integration for server deployments
+
+### 🎨 **Advanced TLDraw Collaboration**
+- **Real-time Multi-user**: Live cursors, instant synchronization, presence indicators
+- **Smart User Management**: Auto-assigned superhero names with collision prevention
+- **Keyboard Shortcuts**: Number keys (1-9) for instant color switching
+- **Asset Handling**: Image uploads with URL unfurling for bookmarks
+- **Room Persistence**: File-based storage with automatic cleanup
+
+### 🔧 **Developer Experience**
+- **Dual Mode Support**: Production (optimized) and Development (hot-reload) builds
+- **Comprehensive Monitoring**: Room statistics, health checks, system metrics
+- **Easy Management**: Single script for all operations (`manage-config.sh`)
+- **CI/CD Ready**: GitHub Actions with automated testing and releases
+
+## 🆕 What's New
+
+### Recent Enhancements
+- **🛠️ Development Mode**: Added `start-dev` and `rebuild-dev` commands for hot-reload development
+- **⌨️ Keyboard Shortcuts**: Custom number key shortcuts (1-9) for instant color switching in TLDraw  
+- **🔧 Smart Key Handling**: Fixed Delete key functionality while preserving color shortcuts
+- **📊 Enhanced Monitoring**: Comprehensive TLDraw health checks and room statistics
+- **🏗️ Production Builds**: Optimized Vite builds with minification and static serving
+- **🔄 Asset Management**: Fixed image paste functionality in collaborative rooms
+- **📱 Mobile Optimization**: Better responsive design and touch support
+
 ## Quick Start
 
+**Production Mode (Default):**
 ```bash
 git clone https://github.com/vppillai/diagram-tools-hub.git
 cd diagram-tools-hub
-./manage-config.sh start
+./manage-config.sh start        # Optimized production build
+```
+
+**Development Mode:**
+```bash
+git clone https://github.com/vppillai/diagram-tools-hub.git
+cd diagram-tools-hub
+./manage-config.sh start-dev    # Development with hot-reload
 ```
 
 Then open https://localhost:8080 in your browser.
@@ -35,10 +75,12 @@ The `manage-config.sh` script handles all operations:
 
 ### Basic Operations
 ```bash
-./manage-config.sh start      # Start all services with auto-generated HTTPS
+./manage-config.sh start      # Start all services in production mode (optimized, minified)
+./manage-config.sh start-dev  # Start all services in development mode (hot-reload, debugging)
 ./manage-config.sh stop       # Stop all services
 ./manage-config.sh restart    # Restart all services
-./manage-config.sh rebuild    # Rebuild containers and restart
+./manage-config.sh rebuild    # Rebuild containers and restart (production mode)
+./manage-config.sh rebuild-dev # Rebuild containers and restart (development mode)
 ./manage-config.sh status     # Show container status and resource usage
 ```
 
@@ -48,6 +90,13 @@ The `manage-config.sh` script handles all operations:
 ./manage-config.sh http-only      # Switch to HTTP-only mode (disable SSL)
 ./manage-config.sh cleanup        # Remove conflicting containers/networks
 ./manage-config.sh clean-rebuild  # Complete rebuild from scratch
+```
+
+### Maintenance Commands
+```bash
+./manage-config.sh prune                    # Remove unused Docker resources
+./manage-config.sh backup-config           # Backup current configuration
+./manage-config.sh restore-config [FILE]   # Restore configuration from backup
 ```
 
 ### Individual Service Management
@@ -146,6 +195,15 @@ TLDraw features a powerful WebSocket-based collaboration system supporting multi
 - Progressive loading with fallback to local store
 - Tab visibility tracking for idle user optimization
 - Automatic reconnection handling
+- **Asset Management**: Image upload/download with size limits (10MB max, 5000px max dimension)
+- **URL Unfurling**: Automatic bookmark previews with title, description, and thumbnails
+
+⌨️ **Enhanced User Experience:**
+- **Custom Keyboard Shortcuts**: Quick color switching with number keys (1-9)
+  - `1` = Black, `2` = Grey, `3` = Green, `4` = Yellow, `5` = Red
+  - `6` = Blue, `7` = Orange, `8` = Indigo, `9` = Violet
+- **Optimized Drawing**: Default small pen size for precise drawing
+- **Smart Key Handling**: Shortcuts don't interfere with Delete, Arrow keys, or text input
 
 🔧 **System Architecture:**
 - **Frontend**: React with @tldraw/sync integration
@@ -199,20 +257,41 @@ COMPOSE_PROJECT_NAME=diagram-tools-hub  # Docker Compose project name
 
 ### TLDraw Development
 
+**Containerized Development (Recommended):**
 ```bash
-# Frontend development
+# Development mode - Hot reload, debugging, live editing
+./manage-config.sh start-dev    # Start all services with TLDraw in dev mode
+
+# Production mode - Optimized build, minified assets  
+./manage-config.sh start        # Start all services with TLDraw production build
+
+# Container rebuilds (production mode - default)
+./manage-config.sh rebuild tldraw       # Rebuild TLDraw container (production)
+./manage-config.sh rebuild tldraw-sync  # Rebuild sync backend container
+
+# Container rebuilds (development mode)
+./manage-config.sh rebuild-dev tldraw   # Rebuild TLDraw container (development)
+./manage-config.sh rebuild-dev          # Rebuild all containers (development)
+```
+
+**Manual Development (Advanced):**
+```bash
+# Frontend development (outside containers)
 cd tldraw && npm run dev    # Development mode (port 3000)
 cd tldraw && npm run build  # Production build
 cd tldraw && npm run preview # Preview production build
 
-# Sync backend development  
+# Sync backend development (outside containers)
 cd tldraw-sync-backend && npm run dev   # Development with --watch
 cd tldraw-sync-backend && npm start     # Production mode
-
-# Container rebuilds
-./manage-config.sh rebuild tldraw       # Rebuild frontend
-./manage-config.sh rebuild tldraw-sync  # Rebuild sync backend
 ```
+
+**Development vs Production Modes:**
+
+| Mode | Commands | Features | Use Case |
+|------|----------|----------|----------|
+| **Development** | `./manage-config.sh start-dev`<br>`./manage-config.sh rebuild-dev` | • Hot Module Reload<br>• Source maps<br>• Live code editing<br>• Debugging tools | Active development, testing changes |
+| **Production** | `./manage-config.sh start`<br>`./manage-config.sh rebuild` | • Minified bundles<br>• Optimized assets<br>• Static file serving<br>• Better performance | Deployment, production use |
 
 ## Architecture
 
@@ -229,12 +308,24 @@ cd tldraw-sync-backend && npm start     # Production mode
 - External access through Nginx reverse proxy only
 - SSL/TLS termination at proxy level
 
-### TLDraw Collaboration Stack
-- **Frontend**: React with Vite build system, @tldraw/sync integration
-- **Backend**: Node.js with WebSocket server (@tldraw/sync-core)
-- **Storage**: File-based persistence with automatic cleanup
-- **Assets**: Upload/download system with size management
-- **Monitoring**: REST API for statistics and health checks
+### Technology Stack
+
+**Frontend Technologies:**
+- **TLDraw**: React 18 + Vite 5 + @tldraw/tldraw ^2.0.0 + @tldraw/sync ^2.0.0
+- **Draw.io**: Official jgraph/drawio Docker image
+- **Excalidraw**: Official excalidraw/excalidraw Docker image
+- **Nginx**: Alpine-based reverse proxy with HTTPS termination
+
+**Backend Technologies:**
+- **TLDraw Sync**: Node.js 20 + @tldraw/sync-core ^2.0.0 + WebSocket (ws ^8.18.0)
+- **URL Unfurling**: unfurl.js ^6.4.0 for bookmark previews
+- **File Storage**: Persistent volumes for rooms (.rooms) and assets (.assets)
+
+**Infrastructure:**
+- **Containerization**: Docker & Docker Compose with multi-service orchestration
+- **Networking**: Isolated Docker network with internal service communication
+- **SSL/TLS**: Auto-generated certificates with SAN support and HTTP → HTTPS redirect
+- **Process Management**: Systemd service integration for production deployments
 
 ## Troubleshooting
 
@@ -275,6 +366,22 @@ docker-compose build --no-cache tldraw-sync
 ./manage-config.sh tldraw-health
 ```
 
+## Performance & Security
+
+### Security Features
+- **HTTPS by Default**: TLS 1.2+ with secure cipher suites
+- **Security Headers**: HSTS, X-Frame-Options, CSP, XSS Protection
+- **Container Isolation**: Services run in isolated Docker network
+- **No Exposed Secrets**: Environment-based configuration management
+- **Regular Updates**: Automated dependency scanning via GitHub Actions
+
+### Performance Optimizations
+- **Production Builds**: Minified JavaScript (350KB gzipped), optimized CSS
+- **Static Asset Serving**: Nginx-based file serving with proper MIME types
+- **WebSocket Efficiency**: Binary protocol for real-time collaboration
+- **Resource Management**: Health checks and automatic cleanup of old data
+- **Development Mode**: Hot Module Reload for instant code changes
+
 ## Requirements
 
 - **Docker & Docker Compose** - Container orchestration
@@ -285,9 +392,26 @@ docker-compose build --no-cache tldraw-sync
 ## Development & Contributing
 
 ### Local Development
+
+**For Active Development:**
 ```bash
-NODE_ENV=development docker-compose up -d
-docker-compose logs -f tldraw
+# Start in development mode with hot-reload
+./manage-config.sh start-dev
+
+# View logs for debugging
+./manage-config.sh logs tldraw
+
+# Make changes to source files - they'll be reflected immediately
+# Files are in: ./tldraw/ and ./tldraw-sync-backend/
+```
+
+**For Testing/Production Deployment:**
+```bash
+# Start in production mode (optimized builds)
+./manage-config.sh start
+
+# View container status
+./manage-config.sh status
 ```
 
 ### Adding New Tools
@@ -297,6 +421,28 @@ docker-compose logs -f tldraw
 
 ### Contributing
 Found a bug or have an idea? Open an issue or submit a PR!
+
+## 💡 Usage Tips & Best Practices
+
+### TLDraw Collaboration Tips
+- **Room Names**: Use descriptive room names like `/tldraw/project-design` or `/tldraw/team-brainstorm`
+- **Color Shortcuts**: Press number keys 1-9 for instant color changes while drawing
+- **Asset Sharing**: Paste images directly - they're automatically uploaded and shared with collaborators
+- **URL Bookmarks**: Paste URLs to create rich bookmark cards with previews
+- **Performance**: Use production mode (`./manage-config.sh start`) for best performance with multiple users
+
+### Deployment Best Practices
+- **Production**: Always use `./manage-config.sh start` for production deployments
+- **Development**: Use `./manage-config.sh start-dev` only for active development
+- **Monitoring**: Regularly check `./manage-config.sh tldraw-health` for system status
+- **Maintenance**: Run `./manage-config.sh prune` periodically to clean up unused Docker resources
+- **Backups**: Use `./manage-config.sh backup-config` before major updates
+
+### Security Recommendations
+- **Custom Certificates**: Replace self-signed certificates with proper SSL certificates for production
+- **Firewall**: Restrict access to port 8080 to authorized users only
+- **Updates**: Keep the system updated by pulling latest releases regularly
+- **Room Cleanup**: Old rooms and assets are automatically cleaned up (configurable retention periods)
 
 ## Releases
 

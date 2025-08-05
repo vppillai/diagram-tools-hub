@@ -47,10 +47,12 @@ show_help() {
     echo "Usage: $0 [COMMAND] [OPTIONS]"
     echo ""
     echo "Container Management Commands:"
-    echo "  start [CERT] [KEY]      Start all services (auto-generates SSL if not provided)"
+    echo "  start [CERT] [KEY]      Start all services in production mode (auto-generates SSL if not provided)"
+    echo "  start-dev [CERT] [KEY]  Start all services in development mode"
     echo "  stop [SERVICE]          Stop all services or specific service"
     echo "  restart [SERVICE]       Restart all services or specific service"
-    echo "  rebuild [SERVICE]       Rebuild and restart all services or specific service"
+    echo "  rebuild [SERVICE]       Rebuild and restart all services or specific service (production)"
+    echo "  rebuild-dev [SERVICE]   Rebuild and restart all services or specific service (development)"
     echo "  rebuild-only [SERVICE]  Rebuild specific service without restarting"
     echo "  clean                   Stop and remove all containers, networks, and images"
     echo "  clean-rebuild           Clean everything and rebuild from scratch"
@@ -80,10 +82,12 @@ show_help() {
     echo "  system-stats             Show real-time container resource usage"
     echo ""
     echo "Examples:"
-    echo "  $0 start                        # Start with auto-generated SSL"
+    echo "  $0 start                        # Start in production mode with auto-generated SSL"
+    echo "  $0 start-dev                    # Start in development mode with hot-reload"
     echo "  $0 start cert.pem key.pem       # Start with custom certificates"
     echo "  $0 restart tldraw               # Restart only TLDraw service"
-    echo "  $0 rebuild tldraw-sync          # Rebuild and restart TLDraw sync service"
+    echo "  $0 rebuild tldraw-sync          # Rebuild and restart TLDraw sync service (production)"
+    echo "  $0 rebuild-dev tldraw           # Rebuild and restart TLDraw service (development)"
     echo "  $0 rebuild-only engine          # Rebuild engine without restarting"
     echo "  $0 stop drawio                  # Stop only Draw.io service"
     echo "  $0 logs tldraw                  # Show tldraw logs"
@@ -143,6 +147,45 @@ start_services() {
     else
         log_info "Services available at:"
         log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+    fi
+    
+    show_status
+}
+
+start_dev_services() {
+    local cert_file="$2"
+    local key_file="$3"
+    
+    # Handle SSL setup automatically
+    setup_ssl_auto "$cert_file" "$key_file"
+    
+    log_info "Starting all services in development mode..."
+    log_warning "Development mode: TLDraw will have hot-reload enabled and serve from source"
+    
+    # Stop any existing containers first to avoid conflicts
+    sudo docker compose down 2>/dev/null || true
+    
+    # Ensure all configuration files exist
+    ensure_configs_exist
+    
+    # Use both compose files - main + dev overrides
+    sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+    log_success "All services started successfully in development mode!"
+    
+    # Show access information
+    if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+        log_info "HTTPS is configured. Services available at:"
+        if [ "$HTTPS_PORT" = "443" ]; then
+            log_info "  🔒 https://localhost (Main hub)"
+        else
+            log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+        fi
+        log_info "  🔧 TLDraw: Development mode with hot-reload"
+        log_warning "If using self-signed certificates, accept the browser security warning."
+    else
+        log_info "Services available at:"
+        log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+        log_info "  🔧 TLDraw: Development mode with hot-reload"
     fi
     
     show_status
@@ -240,6 +283,52 @@ rebuild_services() {
         else
             log_info "Services available at:"
             log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+        fi
+        
+        show_status
+    fi
+}
+
+rebuild_dev_services() {
+    local service="$2"
+    local cert_file="$3"
+    local key_file="$4"
+    
+    if [ -n "$service" ]; then
+        log_info "Rebuilding and restarting $service service in development mode..."
+        sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache "$service"
+        sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d "$service"
+        log_success "$service service rebuilt and started successfully in development mode!"
+        show_status
+    else
+        log_info "Rebuilding and restarting all services in development mode..."
+        log_warning "Development mode: TLDraw will have hot-reload enabled and serve from source"
+        sudo docker compose down
+        
+        # Handle SSL setup automatically
+        setup_ssl_auto "$cert_file" "$key_file"
+        
+        # Ensure all configuration files exist
+        ensure_configs_exist
+        
+        sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
+        sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+        log_success "All services rebuilt and started successfully in development mode!"
+        
+        # Show access information
+        if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+            log_info "HTTPS is configured. Services available at:"
+            if [ "$HTTPS_PORT" = "443" ]; then
+                log_info "  🔒 https://localhost (Main hub)"
+            else
+                log_info "  🔒 https://localhost:$HTTPS_PORT (Main hub)"
+            fi
+            log_info "  🔧 TLDraw: Development mode with hot-reload"
+            log_warning "If using self-signed certificates, accept the browser security warning."
+        else
+            log_info "Services available at:"
+            log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+            log_info "  🔧 TLDraw: Development mode with hot-reload"
         fi
         
         show_status
@@ -1499,6 +1588,9 @@ case "$1" in
     start)
         start_services "$@"
         ;;
+    start-dev)
+        start_dev_services "$@"
+        ;;
     stop)
         stop_services "$@"
         ;;
@@ -1507,6 +1599,9 @@ case "$1" in
         ;;
     rebuild)
         rebuild_services "$@"
+        ;;
+    rebuild-dev)
+        rebuild_dev_services "$@"
         ;;
     rebuild-only)
         rebuild_only "$@"

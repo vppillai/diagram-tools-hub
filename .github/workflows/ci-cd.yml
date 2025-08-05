@@ -103,6 +103,91 @@ jobs:
           
           echo "✅ Full system test completed"
 
+  # Test rebuild commands
+  test-rebuild-commands:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test rebuild commands
+        run: |
+          echo "🧪 Testing rebuild and rebuild-dev commands..."
+          
+          chmod +x ./manage-config.sh
+          
+          # Use HTTP-only mode to avoid SSL certificate issues in CI
+          ./manage-config.sh http-only
+          
+          echo "Testing production rebuild command..."
+          ./manage-config.sh rebuild tldraw
+          
+          # Verify TLDraw container is running
+          if docker ps | grep -q tldraw-app; then
+            echo "✅ Production rebuild successful - TLDraw container running"
+          else
+            echo "❌ Production rebuild failed - TLDraw container not running"
+            docker compose logs tldraw
+            exit 1
+          fi
+          
+          echo "Testing development rebuild command..."
+          ./manage-config.sh rebuild-dev tldraw
+          
+          # Verify TLDraw container is running in dev mode
+          if docker ps | grep -q tldraw-app; then
+            echo "✅ Development rebuild successful - TLDraw container running"
+          else
+            echo "❌ Development rebuild failed - TLDraw container not running"
+            docker compose logs tldraw
+            exit 1
+          fi
+          
+          # Test system health after both rebuilds
+          sleep 10
+          if curl -f http://localhost:8080/health >/dev/null 2>&1; then
+            echo "✅ System health check passed after rebuilds"
+          else
+            echo "⚠️ System health check failed after rebuilds"
+            echo "Service logs:"
+            docker compose logs --tail=30
+          fi
+          
+          # Test full system rebuild (production)
+          echo "Testing full system rebuild (production)..."
+          ./manage-config.sh rebuild
+          sleep 15
+          
+          if curl -f http://localhost:8080/health >/dev/null 2>&1; then
+            echo "✅ Full production rebuild successful"
+          else
+            echo "❌ Full production rebuild failed"
+            docker compose logs --tail=30
+            exit 1
+          fi
+          
+          # Test full system rebuild (development)
+          echo "Testing full system rebuild (development)..."
+          ./manage-config.sh rebuild-dev
+          sleep 15
+          
+          if curl -f http://localhost:8080/health >/dev/null 2>&1; then
+            echo "✅ Full development rebuild successful"
+          else
+            echo "❌ Full development rebuild failed"
+            docker compose logs --tail=30
+            exit 1
+          fi
+          
+          # Stop services
+          ./manage-config.sh stop
+          
+          echo "✅ All rebuild commands tested successfully"
+
 
 
 
