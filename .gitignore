@@ -38,4 +38,8 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# TLDraw sync backend data (runtime generated)
+tldraw-sync-backend/.rooms/
+tldraw-sync-backend/.assets/ 

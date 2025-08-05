@@ -64,7 +64,8 @@ const multiplayerAssets = {
                 throw new Error(`Failed to upload asset: ${response.statusText}`)
             }
 
-            return { src: url }
+            // Return just the URL string, not an object
+            return url
         } catch (error) {
             console.error('Asset upload failed:', error)
             throw error
