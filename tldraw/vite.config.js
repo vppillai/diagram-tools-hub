@@ -12,9 +12,7 @@ export default defineConfig(({ mode }) => {
             port: 3000,
             strictPort: true,
             allowedHosts: true,
-            hmr: isProduction ? false : {
-                port: 3000
-            }
+            hmr: false
         },
         build: {
             sourcemap: false,
