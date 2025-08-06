@@ -24,6 +24,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 
 jobs:
   verify-deployment:
@@ -304,6 +305,7 @@ jobs:
 
       - name: Create verification report
         if: always()
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
