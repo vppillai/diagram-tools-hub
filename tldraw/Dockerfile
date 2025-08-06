@@ -12,10 +12,6 @@ RUN npm install
 COPY index.html .
 COPY src/ src/
 COPY vite.config.js .
-COPY vitest.config.js .
-COPY tsconfig.json .
-COPY tsconfig.node.json .
-COPY .eslintrc.cjs .
 
 # Build argument to control build mode
 ARG BUILD_MODE=production
