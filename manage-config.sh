@@ -791,7 +791,7 @@ http {
         }
 
         # Handle Excalidraw assets that are requested from root (not under /tldraw)
-        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest) {
+        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest|sw\.js) {
             proxy_pass http://excalidraw_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -1010,7 +1010,7 @@ http {
         }
 
         # Handle Excalidraw assets that are requested from root (not under /tldraw)
-        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest) {
+        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest|sw\.js) {
             proxy_pass http://excalidraw_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
