@@ -42,4 +42,10 @@ Thumbs.db
 
 # TLDraw sync backend data (runtime generated)
 tldraw-sync-backend/.rooms/
-tldraw-sync-backend/.assets/ 
+tldraw-sync-backend/.assets/
+
+# TLDraw frontend build artifacts
+tldraw/node_modules/
+tldraw/dist/
+tldraw/coverage/
+tldraw/eslint-results.json 

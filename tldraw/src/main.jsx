@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import PropTypes from 'prop-types'
 import { useSync } from '@tldraw/sync'
 import {
     AssetRecordType,
@@ -144,7 +145,7 @@ async function unfurlBookmarkUrl({ url }) {
     return asset
 }
 
-function App() {
+export default function App() {
     const roomId = getRoomId()
     const [isReady, setIsReady] = React.useState(false)
     
@@ -536,6 +537,10 @@ function SyncTldraw({ roomId }) {
     )
 }
 
+SyncTldraw.propTypes = {
+    roomId: PropTypes.string.isRequired
+}
+
 // Component for local-only TLDraw with persistence
 function LocalTldraw({ roomId }) {
     const STORAGE_KEY = 'tldraw-local-document'
@@ -733,6 +738,10 @@ function LocalTldraw({ roomId }) {
             )}
         </>
     )
+}
+
+LocalTldraw.propTypes = {
+    roomId: PropTypes.string
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

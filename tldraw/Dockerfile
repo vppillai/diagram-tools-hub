@@ -10,11 +10,20 @@ RUN npm install
 
 # Copy application files (these change more frequently)
 COPY index.html .
-COPY main.jsx .
+COPY src/ src/
 COPY vite.config.js .
+COPY vitest.config.js .
+COPY tsconfig.json .
+COPY tsconfig.node.json .
+COPY .eslintrc.cjs .
 
 # Build argument to control build mode
 ARG BUILD_MODE=production
+
+# Run tests and linting before building
+RUN npm run lint || true
+RUN npm run test
+RUN npm run test:coverage
 
 # Conditionally build for production if BUILD_MODE is production
 RUN if [ "$BUILD_MODE" = "production" ]; then \
