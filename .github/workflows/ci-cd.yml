@@ -178,7 +178,7 @@ jobs:
         if: matrix.service == 'engine'
         run: |
           chmod +x ./manage-config.sh
-          ./manage-config.sh http-only
+          ./manage-config.sh generate-nginx-config
 
       - name: Build and test service
         run: |
