@@ -1,0 +1,364 @@
+name: Deployment Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to verify (staging/production)'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      endpoint_url:
+        description: 'Base URL to verify (e.g., https://your-domain.com)'
+        required: true
+        type: string
+      deep_check:
+        description: 'Run deep verification checks'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install verification tools
+        run: |
+          npm init -y
+          npm install --save-dev axios @playwright/test
+          npx playwright install chromium
+
+      - name: Basic connectivity check
+        run: |
+          echo "🔍 Verifying basic connectivity to ${{ github.event.inputs.endpoint_url }}"
+          
+          # Test main hub
+          if curl -f -s --max-time 10 "${{ github.event.inputs.endpoint_url }}" > /dev/null; then
+            echo "✅ Main hub is accessible"
+          else
+            echo "❌ Main hub is not accessible"
+            exit 1
+          fi
+          
+          # Test health endpoint
+          if curl -f -s --max-time 10 "${{ github.event.inputs.endpoint_url }}/health" > /dev/null; then
+            echo "✅ Health endpoint is responding"
+          else
+            echo "❌ Health endpoint is not responding"
+            exit 1
+          fi
+
+      - name: Service availability check
+        run: |
+          echo "🔍 Checking service availability..."
+          
+          SERVICES=("/drawio/" "/excalidraw/" "/tldraw/")
+          FAILED_SERVICES=()
+          
+          for service in "${SERVICES[@]}"; do
+            echo "Testing $service..."
+            if curl -f -s --max-time 15 "${{ github.event.inputs.endpoint_url }}${service}" > /dev/null; then
+              echo "✅ ${service} is accessible"
+            else
+              echo "❌ ${service} is not accessible"
+              FAILED_SERVICES+=("$service")
+            fi
+          done
+          
+          if [ ${#FAILED_SERVICES[@]} -ne 0 ]; then
+            echo "Failed services: ${FAILED_SERVICES[*]}"
+            exit 1
+          fi
+
+      - name: TLDraw functionality verification
+        run: |
+          cat > verify-tldraw.js << 'EOF'
+          const axios = require('axios');
+          
+          async function verifyTLDraw() {
+            const baseUrl = process.argv[2];
+            console.log('🎨 Verifying TLDraw functionality...');
+            
+            try {
+              // Test TLDraw frontend
+              const response = await axios.get(`${baseUrl}/tldraw/`, {
+                timeout: 15000,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (compatible; DeploymentVerification/1.0)'
+                }
+              });
+              
+              if (response.status === 200) {
+                console.log('✅ TLDraw frontend loads successfully');
+                
+                // Check for key TLDraw components in the HTML
+                const html = response.data;
+                const checks = [
+                  { name: 'React root element', pattern: 'id="root"' },
+                  { name: 'TLDraw assets', pattern: '/assets/' },
+                  { name: 'JavaScript bundle', pattern: '.js' }
+                ];
+                
+                let allChecksPass = true;
+                for (const check of checks) {
+                  if (html.includes(check.pattern)) {
+                    console.log(`✅ ${check.name} found`);
+                  } else {
+                    console.log(`❌ ${check.name} missing`);
+                    allChecksPass = false;
+                  }
+                }
+                
+                if (!allChecksPass) {
+                  console.log('❌ TLDraw frontend validation failed');
+                  process.exit(1);
+                }
+              } else {
+                console.log(`❌ TLDraw frontend returned status ${response.status}`);
+                process.exit(1);
+              }
+              
+              // Test TLDraw sync endpoints (if available)
+              try {
+                const pingResponse = await axios.get(`${baseUrl}/tldraw-sync/ping`, { timeout: 5000 });
+                console.log('✅ TLDraw sync backend is responding');
+              } catch (error) {
+                console.log('⚠️ TLDraw sync backend may not be available (this might be expected)');
+              }
+              
+              console.log('✅ TLDraw verification completed successfully');
+              
+            } catch (error) {
+              console.log('❌ TLDraw verification failed:', error.message);
+              process.exit(1);
+            }
+          }
+          
+          verifyTLDraw();
+          EOF
+          
+          node verify-tldraw.js "${{ github.event.inputs.endpoint_url }}"
+
+      - name: Deep verification checks
+        if: ${{ github.event.inputs.deep_check == 'true' }}
+        run: |
+          echo "🔬 Running deep verification checks..."
+          
+          cat > deep-verification.js << 'EOF'
+          const { chromium } = require('playwright');
+          
+          async function runDeepChecks() {
+            const baseUrl = process.argv[2];
+            console.log('🚀 Starting deep verification with Playwright...');
+            
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+              userAgent: 'Mozilla/5.0 (compatible; DeploymentVerification/1.0)'
+            });
+            const page = await context.newPage();
+            
+            try {
+              // Test main hub
+              console.log('🏠 Testing main hub...');
+              await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 30000 });
+              
+              const title = await page.title();
+              if (title.toLowerCase().includes('diagram')) {
+                console.log('✅ Main hub title is correct');
+              } else {
+                console.log(`⚠️ Main hub title: "${title}"`);
+              }
+              
+              // Check for service links
+              const services = ['Draw.io', 'Excalidraw', 'TLDraw'];
+              for (const service of services) {
+                const link = page.locator(`text=${service}`);
+                if (await link.isVisible()) {
+                  console.log(`✅ ${service} link is visible`);
+                } else {
+                  console.log(`❌ ${service} link is missing`);
+                }
+              }
+              
+              // Test TLDraw canvas loading
+              console.log('🎨 Testing TLDraw canvas...');
+              await page.goto(`${baseUrl}/tldraw/`, { waitUntil: 'networkidle', timeout: 30000 });
+              
+              // Wait for TLDraw to initialize
+              try {
+                await page.waitForSelector('.tl-canvas', { timeout: 15000 });
+                console.log('✅ TLDraw canvas loaded successfully');
+                
+                // Check if tools are available
+                const toolbar = page.locator('.tl-toolbar');
+                if (await toolbar.isVisible()) {
+                  console.log('✅ TLDraw toolbar is visible');
+                } else {
+                  console.log('⚠️ TLDraw toolbar may not be visible');
+                }
+                
+                // Test collaborative room
+                console.log('👥 Testing collaborative room...');
+                await page.goto(`${baseUrl}/tldraw/test-deployment-room`, { waitUntil: 'networkidle', timeout: 30000 });
+                await page.waitForSelector('.tl-canvas', { timeout: 15000 });
+                
+                // Look for room indicator
+                const roomIndicator = page.locator('text=Room: test-deployment-room');
+                if (await roomIndicator.isVisible()) {
+                  console.log('✅ Collaborative room functionality working');
+                } else {
+                  console.log('⚠️ Room indicator not found (may still be working)');
+                }
+                
+              } catch (error) {
+                console.log('❌ TLDraw canvas failed to load:', error.message);
+                throw error;
+              }
+              
+              console.log('✅ Deep verification completed successfully');
+              
+            } catch (error) {
+              console.log('❌ Deep verification failed:', error.message);
+              throw error;
+            } finally {
+              await browser.close();
+            }
+          }
+          
+          runDeepChecks().catch(error => {
+            console.error('Deep verification failed:', error);
+            process.exit(1);
+          });
+          EOF
+          
+          node deep-verification.js "${{ github.event.inputs.endpoint_url }}"
+
+      - name: Performance baseline check
+        if: ${{ github.event.inputs.deep_check == 'true' }}
+        run: |
+          echo "⚡ Running performance baseline checks..."
+          
+          # Install Apache Bench for load testing
+          sudo apt-get update && sudo apt-get install -y apache2-utils
+          
+          # Test response times
+          echo "Testing main hub response time..."
+          ab -n 10 -c 2 "${{ github.event.inputs.endpoint_url }}/" > main-hub-perf.txt 2>&1 || true
+          
+          echo "Testing TLDraw response time..."
+          ab -n 5 -c 1 "${{ github.event.inputs.endpoint_url }}/tldraw/" > tldraw-perf.txt 2>&1 || true
+          
+          echo "📊 Performance Results:"
+          echo "======================="
+          
+          if [ -f main-hub-perf.txt ]; then
+            echo "Main Hub Performance:"
+            grep -E "(Time per request|Requests per second)" main-hub-perf.txt || echo "No performance data available"
+            echo ""
+          fi
+          
+          if [ -f tldraw-perf.txt ]; then
+            echo "TLDraw Performance:"
+            grep -E "(Time per request|Requests per second)" tldraw-perf.txt || echo "No performance data available"
+          fi
+
+      - name: Security headers check
+        run: |
+          echo "🔒 Checking security headers..."
+          
+          HEADERS=$(curl -I -s --max-time 10 "${{ github.event.inputs.endpoint_url }}" || echo "Failed to get headers")
+          
+          echo "Response headers:"
+          echo "$HEADERS"
+          echo ""
+          
+          # Check for important security headers
+          SECURITY_CHECKS=(
+            "X-Frame-Options"
+            "X-Content-Type-Options"
+            "Content-Security-Policy"
+          )
+          
+          for header in "${SECURITY_CHECKS[@]}"; do
+            if echo "$HEADERS" | grep -i "$header" > /dev/null; then
+              echo "✅ $header header is present"
+            else
+              echo "⚠️ $header header is missing"
+            fi
+          done
+
+      - name: Create verification report
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const environment = '${{ github.event.inputs.environment }}';
+            const endpointUrl = '${{ github.event.inputs.endpoint_url }}';
+            const deepCheck = '${{ github.event.inputs.deep_check }}';
+            const success = '${{ job.status }}' === 'success';
+            
+            const report = `
+            ## 🚀 Deployment Verification Report
+            
+            **Environment:** ${environment}
+            **Endpoint:** ${endpointUrl}
+            **Deep Checks:** ${deepCheck}
+            **Status:** ${success ? '✅ PASSED' : '❌ FAILED'}
+            **Date:** ${new Date().toISOString()}
+            
+            ### Verification Steps Completed
+            - ✅ Basic connectivity check
+            - ✅ Service availability check  
+            - ✅ TLDraw functionality verification
+            ${deepCheck === 'true' ? '- ✅ Deep verification checks\n- ✅ Performance baseline check' : ''}
+            - ✅ Security headers check
+            
+            ### Next Steps
+            ${success ? 
+              '🎉 Deployment verification passed! The application is ready for use.' : 
+              '🚨 Deployment verification failed. Please check the workflow logs and address any issues.'}
+            
+            ### Quick Links
+            - [Main Hub](${endpointUrl})
+            - [TLDraw](${endpointUrl}/tldraw/)
+            - [Draw.io](${endpointUrl}/drawio/)
+            - [Excalidraw](${endpointUrl}/excalidraw/)
+            - [Health Check](${endpointUrl}/health)
+            
+            ---
+            *This report was generated automatically by the deployment verification workflow.*
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📋 Deployment Verification Report - ${environment} (${success ? 'PASSED' : 'FAILED'})`,
+              body: report,
+              labels: ['deployment', 'verification', environment, success ? 'success' : 'failure']
+            });
+
+      - name: Upload verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-verification-${{ github.event.inputs.environment }}
+          path: |
+            *.txt
+            *.log

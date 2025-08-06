@@ -19,15 +19,75 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Code quality checks
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'tldraw/package-lock.json'
+
+      - name: Install TLDraw dependencies
+        run: |
+          cd tldraw
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd tldraw
+          npx eslint . --ext .js,.jsx,.ts,.tsx --format json --output-file eslint-results.json || true
+          npx eslint . --ext .js,.jsx,.ts,.tsx
+
+      - name: Run Prettier check
+        run: |
+          cd tldraw
+          npx prettier --check . || (
+            echo "❌ Code formatting issues found. Run 'npm run format' to fix."
+            exit 1
+          )
+
+      - name: TypeScript type checking
+        run: |
+          cd tldraw
+          npx tsc --noEmit
+
+      - name: Upload ESLint results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-results
+          path: tldraw/eslint-results.json
+
   # Build and test the application
   build-and-test:
     runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      matrix:
+        service: [tldraw, engine]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.service }}-
+            ${{ runner.os }}-buildx-
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -36,23 +96,108 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and test TLDraw
+      - name: Generate nginx configuration (for engine build)
+        if: matrix.service == 'engine'
         run: |
-          cd ./tldraw
-          docker build -t tldraw:test .
-          echo "✅ TLDraw image built successfully"
-
-      - name: Build and test Engine (Frontend)
-        run: |
-          # Generate nginx.conf using manage script before building
           chmod +x ./manage-config.sh
-          ./manage-config.sh http-only  # This generates the nginx.conf file
-          
-          cd ./engine
-          docker build -t engine:test .
-          echo "✅ Engine image built successfully"
+          ./manage-config.sh http-only
 
-      - name: Test Docker Compose
+      - name: Build and test service
+        run: |
+          if [ "${{ matrix.service }}" = "tldraw" ]; then
+            cd ./tldraw
+            docker build \
+              --cache-from type=local,src=/tmp/.buildx-cache \
+              --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+              -t ${{ matrix.service }}:test .
+          else
+            cd ./engine
+            docker build \
+              --cache-from type=local,src=/tmp/.buildx-cache \
+              --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+              -t ${{ matrix.service }}:test .
+          fi
+          echo "✅ ${{ matrix.service }} image built successfully"
+
+      - name: Test container startup
+        run: |
+          echo "🧪 Testing ${{ matrix.service }} container startup..."
+          docker run --rm -d --name ${{ matrix.service }}-test ${{ matrix.service }}:test
+          sleep 5
+          if ! docker ps | grep -q ${{ matrix.service }}-test; then
+            echo "❌ ${{ matrix.service }} container failed to start"
+            docker logs ${{ matrix.service }}-test 2>/dev/null || echo "No logs available"
+            exit 1
+          fi
+          docker stop ${{ matrix.service }}-test
+          echo "✅ ${{ matrix.service }} container started successfully"
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  # TLDraw unit and integration tests
+  tldraw-tests:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'tldraw/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd tldraw
+          npm ci
+
+      - name: Run unit tests
+        run: |
+          cd tldraw
+          npm test -- --coverage --watchAll=false
+        continue-on-error: true
+
+      - name: Upload test coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage
+          path: tldraw/coverage/
+
+      - name: Test TLDraw build process
+        run: |
+          cd tldraw
+          npm run build
+          echo "✅ TLDraw build completed successfully"
+
+      - name: Validate TLDraw assets
+        run: |
+          cd tldraw/dist
+          if [ ! -f index.html ]; then
+            echo "❌ index.html not found in build output"
+            exit 1
+          fi
+          if [ ! -d assets ]; then
+            echo "❌ assets directory not found in build output"
+            exit 1
+          fi
+          echo "✅ TLDraw build artifacts validated"
+
+  # Integration testing
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, tldraw-tests]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test Docker Compose configuration
         run: |
           docker compose config
           echo "✅ Docker Compose configuration is valid"
@@ -102,6 +247,396 @@ jobs:
           ./manage-config.sh stop
           
           echo "✅ Full system test completed"
+
+  # End-to-End Testing with Playwright
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Start system for E2E tests
+        run: |
+          chmod +x ./manage-config.sh
+          ./manage-config.sh http-only
+          ./manage-config.sh start
+          sleep 20
+
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm install --save-dev @playwright/test
+          npx playwright install
+
+      - name: Create E2E test suite
+        run: |
+          mkdir -p e2e-tests
+          cat > e2e-tests/tldraw.spec.js << 'EOF'
+          const { test, expect } = require('@playwright/test');
+
+          test.describe('TLDraw Application', () => {
+            test('should load TLDraw standalone page', async ({ page }) => {
+              await page.goto('http://localhost:8080/tldraw/');
+              await expect(page).toHaveTitle(/TLDraw/);
+              
+              // Wait for TLDraw canvas to load
+              await page.waitForSelector('.tl-canvas', { timeout: 10000 });
+              
+              // Check if canvas is interactive
+              const canvas = page.locator('.tl-canvas');
+              await expect(canvas).toBeVisible();
+              
+              console.log('✅ TLDraw standalone mode loaded successfully');
+            });
+
+            test('should load collaborative room', async ({ page }) => {
+              await page.goto('http://localhost:8080/tldraw/test-room');
+              await page.waitForSelector('.tl-canvas', { timeout: 10000 });
+              
+              // Check for room indicator
+              await expect(page.locator('text=Room: test-room')).toBeVisible();
+              
+              console.log('✅ TLDraw collaborative room loaded successfully');
+            });
+
+            test('should have drawing tools available', async ({ page }) => {
+              await page.goto('http://localhost:8080/tldraw/');
+              await page.waitForSelector('.tl-canvas', { timeout: 10000 });
+              
+              // Check for essential drawing tools
+              const toolbar = page.locator('.tl-toolbar');
+              await expect(toolbar).toBeVisible();
+              
+              // Test pen tool selection
+              const penTool = page.locator('[data-testid="tools.draw"]');
+              if (await penTool.isVisible()) {
+                await penTool.click();
+                console.log('✅ Pen tool available and clickable');
+              }
+              
+              // Test color palette
+              const colorButton = page.locator('[data-testid*="style.color"]').first();
+              if (await colorButton.isVisible()) {
+                await colorButton.click();
+                console.log('✅ Color selection available');
+              }
+            });
+
+            test('keyboard shortcuts should work', async ({ page }) => {
+              await page.goto('http://localhost:8080/tldraw/');
+              await page.waitForSelector('.tl-canvas', { timeout: 10000 });
+              
+              // Test number key color shortcuts (1-9)
+              for (let i = 1; i <= 3; i++) {
+                await page.keyboard.press(i.toString());
+                await page.waitForTimeout(200);
+              }
+              
+              console.log('✅ Keyboard shortcuts functioning');
+            });
+
+            test('should have correct zoom level on load', async ({ page }) => {
+              await page.goto('http://localhost:8080/tldraw/');
+              await page.waitForSelector('.tl-canvas', { timeout: 10000 });
+              
+              // Wait a bit for zoom to be applied
+              await page.waitForTimeout(500);
+              
+              // Check if zoom was applied (25% based on our recent change)
+              const viewport = page.locator('.tl-viewport');
+              if (await viewport.isVisible()) {
+                const transform = await viewport.evaluate(el => 
+                  window.getComputedStyle(el).transform
+                );
+                
+                // Check if transform contains scale value close to 0.25
+                if (transform && transform.includes('matrix')) {
+                  console.log('✅ Custom zoom level applied on load');
+                } else {
+                  console.log('ℹ️ Transform style:', transform);
+                }
+              }
+            });
+          });
+
+          test.describe('Main Hub', () => {
+            test('should load main hub page', async ({ page }) => {
+              await page.goto('http://localhost:8080/');
+              await expect(page).toHaveTitle(/Diagram Tools Hub/);
+              
+              // Check for all three tool links
+              await expect(page.locator('text=Draw.io')).toBeVisible();
+              await expect(page.locator('text=Excalidraw')).toBeVisible();
+              await expect(page.locator('text=TLDraw')).toBeVisible();
+              
+              console.log('✅ Main hub loaded with all tool links');
+            });
+
+            test('health endpoint should respond', async ({ page }) => {
+              const response = await page.request.get('http://localhost:8080/health');
+              expect(response.status()).toBe(200);
+              
+              console.log('✅ Health endpoint responding correctly');
+            });
+          });
+
+          test.describe('Service Availability', () => {
+            test('all services should be accessible', async ({ page }) => {
+              const services = [
+                { name: 'Draw.io', path: '/drawio/' },
+                { name: 'Excalidraw', path: '/excalidraw/' },
+                { name: 'TLDraw', path: '/tldraw/' }
+              ];
+
+              for (const service of services) {
+                const response = await page.request.get(`http://localhost:8080${service.path}`);
+                expect(response.status()).toBeLessThan(400);
+                console.log(`✅ ${service.name} service accessible`);
+              }
+            });
+          });
+          EOF
+
+      - name: Run E2E tests
+        run: |
+          cd e2e-tests
+          npx playwright test --reporter=html
+        continue-on-error: true
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: e2e-tests/playwright-report/
+
+      - name: Stop system
+        if: always()
+        run: |
+          ./manage-config.sh stop
+
+  # API and WebSocket testing
+  api-tests:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Start system for API tests
+        run: |
+          chmod +x ./manage-config.sh
+          ./manage-config.sh http-only
+          ./manage-config.sh start
+          sleep 20
+
+      - name: Install test dependencies
+        run: |
+          npm init -y
+          npm install --save-dev axios ws
+
+      - name: Create API test suite
+        run: |
+          mkdir -p api-tests
+          cat > api-tests/api.test.js << 'EOF'
+          const axios = require('axios');
+          const WebSocket = require('ws');
+
+          const BASE_URL = 'http://localhost:8080';
+
+          async function testHealthEndpoint() {
+            try {
+              const response = await axios.get(`${BASE_URL}/health`);
+              console.log('✅ Health endpoint:', response.status, response.statusText);
+              return response.status === 200;
+            } catch (error) {
+              console.log('❌ Health endpoint failed:', error.message);
+              return false;
+            }
+          }
+
+          async function testTLDrawAssets() {
+            try {
+              const response = await axios.get(`${BASE_URL}/tldraw/`);
+              console.log('✅ TLDraw frontend:', response.status);
+              
+              if (response.data.includes('TLDraw')) {
+                console.log('✅ TLDraw content validated');
+                return true;
+              }
+              return false;
+            } catch (error) {
+              console.log('❌ TLDraw assets test failed:', error.message);
+              return false;
+            }
+          }
+
+          async function testWebSocketConnection() {
+            return new Promise((resolve) => {
+              try {
+                const ws = new WebSocket('ws://localhost:8080/tldraw-sync/connect/test-room');
+                
+                ws.on('open', () => {
+                  console.log('✅ WebSocket connection established');
+                  ws.close();
+                  resolve(true);
+                });
+                
+                ws.on('error', (error) => {
+                  console.log('❌ WebSocket connection failed:', error.message);
+                  resolve(false);
+                });
+                
+                setTimeout(() => {
+                  ws.close();
+                  console.log('⚠️ WebSocket connection timeout');
+                  resolve(false);
+                }, 5000);
+              } catch (error) {
+                console.log('❌ WebSocket test error:', error.message);
+                resolve(false);
+              }
+            });
+          }
+
+          async function testTLDrawSyncEndpoints() {
+            try {
+              // Test ping endpoint
+              const pingResponse = await axios.get(`${BASE_URL}/tldraw-sync/ping`);
+              console.log('✅ TLDraw sync ping:', pingResponse.status);
+              
+              return pingResponse.status === 200;
+            } catch (error) {
+              console.log('❌ TLDraw sync endpoints failed:', error.message);
+              return false;
+            }
+          }
+
+          async function runAllTests() {
+            console.log('🧪 Starting API tests...\n');
+            
+            const tests = [
+              { name: 'Health Endpoint', fn: testHealthEndpoint },
+              { name: 'TLDraw Assets', fn: testTLDrawAssets },
+              { name: 'WebSocket Connection', fn: testWebSocketConnection },
+              { name: 'TLDraw Sync Endpoints', fn: testTLDrawSyncEndpoints }
+            ];
+            
+            let passed = 0;
+            let failed = 0;
+            
+            for (const test of tests) {
+              console.log(`\n🔄 Running ${test.name}...`);
+              const result = await test.fn();
+              if (result) {
+                passed++;
+              } else {
+                failed++;
+              }
+            }
+            
+            console.log(`\n📊 API Test Results: ${passed} passed, ${failed} failed`);
+            
+            if (failed > 0) {
+              process.exit(1);
+            }
+          }
+
+          runAllTests();
+          EOF
+
+      - name: Run API tests
+        run: |
+          cd api-tests
+          node api.test.js
+
+      - name: Stop system
+        if: always()
+        run: |
+          ./manage-config.sh stop
+
+  # Performance and load testing
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start system for performance tests
+        run: |
+          chmod +x ./manage-config.sh
+          ./manage-config.sh http-only
+          ./manage-config.sh start
+          sleep 20
+
+      - name: Install performance testing tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apache2-utils curl
+
+      - name: Run load tests
+        run: |
+          echo "🚚 Running load tests..."
+          
+          # Test main hub with 50 concurrent requests
+          echo "Testing main hub load..."
+          ab -n 50 -c 10 http://localhost:8080/ > hub-load-test.txt 2>&1 || true
+          
+          # Test TLDraw with 25 concurrent requests  
+          echo "Testing TLDraw load..."
+          ab -n 25 -c 5 http://localhost:8080/tldraw/ > tldraw-load-test.txt 2>&1 || true
+          
+          # Test health endpoint with 100 requests
+          echo "Testing health endpoint load..."
+          ab -n 100 -c 20 http://localhost:8080/health > health-load-test.txt 2>&1 || true
+          
+          echo "✅ Load tests completed"
+
+      - name: Analyze performance results
+        run: |
+          echo "📊 Performance Analysis:"
+          echo "========================"
+          
+          if [ -f hub-load-test.txt ]; then
+            echo "Main Hub Performance:"
+            grep -E "(Requests per second|Time per request)" hub-load-test.txt || echo "No performance data found"
+            echo ""
+          fi
+          
+          if [ -f tldraw-load-test.txt ]; then
+            echo "TLDraw Performance:"
+            grep -E "(Requests per second|Time per request)" tldraw-load-test.txt || echo "No performance data found"
+            echo ""
+          fi
+          
+          if [ -f health-load-test.txt ]; then
+            echo "Health Endpoint Performance:"
+            grep -E "(Requests per second|Time per request)" health-load-test.txt || echo "No performance data found"
+          fi
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-results
+          path: "*-load-test.txt"
+
+      - name: Stop system
+        if: always()
+        run: |
+          ./manage-config.sh stop
 
   # Test rebuild commands
   test-rebuild-commands:

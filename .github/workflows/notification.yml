@@ -1,0 +1,191 @@
+name: Workflow Notifications
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline", "Security Scan", "🚀 Release Management"]
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    steps:
+      - name: Get workflow run details
+        id: workflow-details
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: workflow } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id
+            });
+            
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id
+            });
+            
+            const failedJobs = jobs.jobs.filter(job => job.conclusion === 'failure');
+            
+            return {
+              workflow_name: workflow.name,
+              conclusion: workflow.conclusion,
+              html_url: workflow.html_url,
+              failed_jobs: failedJobs.map(job => ({
+                name: job.name,
+                conclusion: job.conclusion,
+                html_url: job.html_url
+              }))
+            };
+
+      - name: Create failure issue
+        if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const details = ${{ steps.workflow-details.outputs.result }};
+            
+            const failedJobsList = details.failed_jobs.map(job => 
+              `- [${job.name}](${job.html_url}) - ${job.conclusion}`
+            ).join('\n');
+            
+            const issueBody = `
+            ## 🚨 Workflow Failure Alert
+            
+            **Workflow:** ${details.workflow_name}
+            **Status:** ${details.conclusion}
+            **Run:** [View Details](${details.html_url})
+            **Branch:** ${{ github.event.workflow_run.head_branch }}
+            **Commit:** ${{ github.event.workflow_run.head_sha }}
+            
+            ### Failed Jobs
+            ${failedJobsList || 'No specific jobs failed'}
+            
+            ### Next Steps
+            1. Check the workflow logs for detailed error information
+            2. Review recent changes that might have caused the failure
+            3. Fix the issues and push a new commit to re-trigger the workflow
+            
+            ### Quick Actions
+            - [View Workflow Run](${details.html_url})
+            - [View Repository Actions](${{ github.event.repository.html_url }}/actions)
+            
+            ---
+            *This issue was automatically created by the workflow notification system.*
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Workflow Failure: ${details.workflow_name}`,
+              body: issueBody,
+              labels: ['bug', 'ci/cd', 'workflow-failure']
+            });
+
+      - name: Comment on PR if applicable
+        if: ${{ github.event.workflow_run.event == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const details = ${{ steps.workflow-details.outputs.result }};
+            
+            // Get PR number from the workflow run
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${{ github.event.workflow_run.head_branch }}`,
+              state: 'open'
+            });
+            
+            if (prs.length > 0) {
+              const pr = prs[0];
+              
+              const failedJobsList = details.failed_jobs.map(job => 
+                `- [${job.name}](${job.html_url}) - ${job.conclusion}`
+              ).join('\n');
+              
+              const comment = `
+              ## 🚨 Workflow Failure
+              
+              The **${details.workflow_name}** workflow failed for this PR.
+              
+              ### Failed Jobs
+              ${failedJobsList || 'No specific jobs failed'}
+              
+              ### Quick Actions
+              - [View Workflow Run](${details.html_url})
+              - Fix the issues and push a new commit to re-trigger the workflow
+              
+              Please review the failed jobs and address any issues before merging.
+              `;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: comment
+              });
+            }
+
+  success-notification:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == '🚀 Release Management' }}
+    steps:
+      - name: Notify successful release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: workflow } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id
+            });
+            
+            // Get the latest release
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1
+            });
+            
+            if (releases.length > 0) {
+              const release = releases[0];
+              
+              const comment = `
+              ## 🎉 Release Successful!
+              
+              **Version:** ${release.tag_name}
+              **Release:** [${release.name}](${release.html_url})
+              
+              ### What's New
+              Check out the [release notes](${release.html_url}) for all the details!
+              
+              ### Quick Start
+              \`\`\`bash
+              # Get the latest version
+              git clone https://github.com/${context.repo.owner}/${context.repo.repo}.git
+              cd ${context.repo.repo}
+              git checkout ${release.tag_name}
+              ./manage-config.sh start
+              \`\`\`
+              
+              ---
+              *Automated release notification*
+              `;
+              
+              // Create a discussion or issue about the release
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🎉 Release ${release.tag_name} is now available!`,
+                body: comment,
+                labels: ['release', 'announcement']
+              });
+            }
