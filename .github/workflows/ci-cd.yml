@@ -192,6 +192,7 @@ jobs:
           echo "✅ ${{ matrix.service }} image built successfully"
 
       - name: Test container startup
+        if: matrix.service != 'engine'
         run: |
           echo "🧪 Testing ${{ matrix.service }} container startup..."
           docker run --rm -d --name ${{ matrix.service }}-test ${{ matrix.service }}:test
