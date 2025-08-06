@@ -382,18 +382,16 @@ function SyncTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
-                    // Set default pen size to small on initial load only
+                    // Set default zoom to 50%
                     setTimeout(() => {
                         try {
-                            // Try to click the small size button in the UI once on startup
-                            const smallSizeButton = document.querySelector('[data-testid="style.size.s"], [aria-label*="small"], [title*="small"]')
-                            if (smallSizeButton) {
-                                smallSizeButton.click()
-                            }
+                            const camera = editor.getCamera()
+                            editor.setCamera({ ...camera, z: 0.25 })
                         } catch (error) {
-                            console.log('Could not set initial small pen size')
+                            console.log('Could not set initial zoom level')
                         }
-                    }, 500)
+                    }, 100)
+                    
                     
                     // Use shared color configuration
                     const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
@@ -563,18 +561,16 @@ function LocalTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
-                    // Set default pen size to small on initial load only
+                    // Set default zoom to 50%
                     setTimeout(() => {
                         try {
-                            // Try to click the small size button in the UI once on startup
-                            const smallSizeButton = document.querySelector('[data-testid="style.size.s"], [aria-label*="small"], [title*="small"]')
-                            if (smallSizeButton) {
-                                smallSizeButton.click()
-                            }
+                            const camera = editor.getCamera()
+                            editor.setCamera({ ...camera, z: 0.25 })
                         } catch (error) {
-                            console.log('Could not set initial small pen size')
+                            console.log('Could not set initial zoom level')
                         }
-                    }, 500)
+                    }, 100)
+                    
                     
                     // Use shared color configuration
                     const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
