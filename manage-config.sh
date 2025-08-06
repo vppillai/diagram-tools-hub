@@ -743,7 +743,6 @@ http {
 
         # Security headers
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header X-Frame-Options DENY always;
         add_header X-Content-Type-Options nosniff always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -765,6 +764,9 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Allow embedding for Draw.io (override global X-Frame-Options)
+            add_header X-Frame-Options SAMEORIGIN always;
             
             # WebSocket support
             proxy_http_version 1.1;
@@ -899,6 +901,7 @@ services:
     container_name: drawio-app
     environment:
       - DRAWIO_BASE_URL=/drawio
+      - DRAWIO_CONFIG={"compressXml":false,"fontCss":"","customFonts":[],"libraries":"general;uml;er;bpmn;flowchart;basic;arrows2","enabledLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","defaultLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","autosave":true,"formatDiff":false}
     restart: unless-stopped
 
   # Excalidraw container
@@ -984,6 +987,9 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Allow embedding for Draw.io (override global X-Frame-Options)
+            add_header X-Frame-Options SAMEORIGIN always;
             
             # WebSocket support
             proxy_http_version 1.1;
@@ -1109,6 +1115,7 @@ services:
     container_name: drawio-app
     environment:
       - DRAWIO_BASE_URL=/drawio
+      - DRAWIO_CONFIG={"compressXml":false,"fontCss":"","customFonts":[],"libraries":"general;uml;er;bpmn;flowchart;basic;arrows2","enabledLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","defaultLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","autosave":true,"formatDiff":false}
     restart: unless-stopped
 
   # Excalidraw container
