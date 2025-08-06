@@ -680,8 +680,8 @@ http {
             proxy_set_header Connection "upgrade";
         }
 
-        # Handle Excalidraw assets that are requested from root
-        location ~ ^/(assets|manifest\.webmanifest) {
+        # Handle Excalidraw assets that are requested from root (not under /tldraw)
+        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest) {
             proxy_pass http://excalidraw_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -694,6 +694,17 @@ http {
             return 301 /tldraw/;
         }
 
+        # Handle TLDraw production assets (static files need path rewriting)
+        location ~ ^/tldraw/assets/.*\.(js|css)$ {
+            rewrite ^/tldraw(.*)$ $1 break;
+            proxy_pass http://tldraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Handle all other TLDraw requests (dev server needs full path)
         location /tldraw/ {
             proxy_pass http://tldraw_backend/tldraw/;
             proxy_set_header Host $host;
@@ -705,26 +716,6 @@ http {
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-        }
-
-        # Handle TLDraw assets with correct MIME types
-        location ~ ^/tldraw/.*\.(js|jsx)$ {
-            proxy_pass http://tldraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            add_header Content-Type application/javascript;
-        }
-
-        # Handle TLDraw CSS files
-        location ~ ^/tldraw/.*\.css$ {
-            proxy_pass http://tldraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            add_header Content-Type text/css;
         }
 
         # TLDraw Sync reverse proxy for all endpoints
@@ -908,8 +899,8 @@ http {
             proxy_set_header Connection "upgrade";
         }
 
-        # Handle Excalidraw assets that are requested from root
-        location ~ ^/(assets|manifest\.webmanifest) {
+        # Handle Excalidraw assets that are requested from root (not under /tldraw)
+        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest) {
             proxy_pass http://excalidraw_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -922,6 +913,17 @@ http {
             return 301 /tldraw/;
         }
 
+        # Handle TLDraw production assets (static files need path rewriting)
+        location ~ ^/tldraw/assets/.*\.(js|css)$ {
+            rewrite ^/tldraw(.*)$ $1 break;
+            proxy_pass http://tldraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Handle all other TLDraw requests (dev server needs full path)
         location /tldraw/ {
             proxy_pass http://tldraw_backend/tldraw/;
             proxy_set_header Host $host;
@@ -933,26 +935,6 @@ http {
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-        }
-
-        # Handle TLDraw assets with correct MIME types
-        location ~ ^/tldraw/.*\.(js|jsx)$ {
-            proxy_pass http://tldraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            add_header Content-Type application/javascript;
-        }
-
-        # Handle TLDraw CSS files
-        location ~ ^/tldraw/.*\.css$ {
-            proxy_pass http://tldraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            add_header Content-Type text/css;
         }
 
         # TLDraw Sync reverse proxy for all endpoints
