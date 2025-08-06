@@ -67,7 +67,6 @@ show_help() {
     echo "Configuration Commands:"
     echo "  show                    Show current configuration"
     echo "  http-only               Disable HTTPS and use HTTP only"
-    echo "  generate-nginx-config   Generate HTTP-only nginx config (for CI builds)"
     echo "  cleanup                 Remove conflicting containers and networks"
     echo ""
     echo "Maintenance Commands:"
@@ -560,13 +559,6 @@ http_only() {
     log_success "Switched to HTTP-only mode successfully!"
     log_info "Services available at:"
     log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
-}
-
-# Generate only nginx configuration for CI builds
-generate_nginx_config() {
-    log_info "Generating HTTP-only nginx configuration for CI build..."
-    create_http_only_config
-    log_success "nginx.conf generated successfully!"
 }
 
 cleanup_containers() {
@@ -1613,9 +1605,6 @@ case "$1" in
         ;;
     http-only)
         http_only
-        ;;
-    generate-nginx-config)
-        generate_nginx_config
         ;;
     cleanup)
         cleanup_containers

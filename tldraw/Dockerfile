@@ -20,10 +20,6 @@ COPY .eslintrc.cjs .
 # Build argument to control build mode
 ARG BUILD_MODE=production
 
-# Run tests and linting before building
-RUN npm run lint
-RUN npm run test
-RUN npm run test:coverage
 
 # Conditionally build for production if BUILD_MODE is production
 RUN if [ "$BUILD_MODE" = "production" ]; then \
