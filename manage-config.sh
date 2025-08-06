@@ -67,6 +67,7 @@ show_help() {
     echo "Configuration Commands:"
     echo "  show                    Show current configuration"
     echo "  http-only               Disable HTTPS and use HTTP only"
+    echo "  generate-nginx-config   Generate HTTP-only nginx config (for CI builds)"
     echo "  cleanup                 Remove conflicting containers and networks"
     echo ""
     echo "Maintenance Commands:"
@@ -559,6 +560,115 @@ http_only() {
     log_success "Switched to HTTP-only mode successfully!"
     log_info "Services available at:"
     log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+}
+
+# Generate only nginx configuration for CI builds (bypasses docker-compose validation)
+generate_nginx_config() {
+    log_info "Generating HTTP-only nginx configuration for CI build..."
+    
+    # Ensure engine directory exists
+    mkdir -p ./engine
+    
+    # Create HTTP-only nginx configuration
+    local nginx_conf="./engine/nginx.conf"
+    cat > "$nginx_conf" << 'EOF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    upstream drawio_backend {
+        server drawio:8080;
+    }
+
+    upstream excalidraw_backend {
+        server excalidraw:80;
+    }
+
+    upstream tldraw_backend {
+        server tldraw:3000;
+    }
+
+    upstream tldraw_sync_backend {
+        server tldraw-sync:3001;
+    }
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        # Main landing page
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+
+        # Draw.io reverse proxy
+        location /drawio {
+            return 301 /drawio/;
+        }
+
+        location /drawio/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Excalidraw reverse proxy
+        location /excalidraw {
+            return 301 /excalidraw/;
+        }
+
+        location /excalidraw/ {
+            proxy_pass http://excalidraw_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # TLDraw reverse proxy
+        location /tldraw {
+            return 301 /tldraw/;
+        }
+
+        location /tldraw/ {
+            proxy_pass http://tldraw_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # TLDraw WebSocket sync proxy
+        location /tldraw/sync/ {
+            proxy_pass http://tldraw_sync_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}
+EOF
+    
+    log_success "nginx.conf generated successfully for CI build!"
 }
 
 cleanup_containers() {
@@ -1126,8 +1236,8 @@ restore_config() {
     fi
 }
 
-# Check if docker-compose.yml exists
-if [ ! -f "docker-compose.yml" ]; then
+# Check if docker-compose.yml exists (skip for generate-nginx-config command)
+if [ "$1" != "generate-nginx-config" ] && [ ! -f "docker-compose.yml" ]; then
     log_error "docker-compose.yml not found. Please run this script from the project root directory."
     exit 1
 fi
@@ -1605,6 +1715,9 @@ case "$1" in
         ;;
     http-only)
         http_only
+        ;;
+    generate-nginx-config)
+        generate_nginx_config
         ;;
     cleanup)
         cleanup_containers

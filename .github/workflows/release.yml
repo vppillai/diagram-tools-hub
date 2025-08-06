@@ -159,7 +159,7 @@ jobs:
         run: |
           # Generate nginx.conf using manage script before building
           chmod +x ./manage-config.sh
-          ./manage-config.sh http-only  # This generates the nginx.conf file
+          ./manage-config.sh generate-nginx-config
           echo "✅ nginx.conf generated for Docker build"
 
       - name: Extract metadata
