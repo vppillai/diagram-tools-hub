@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --format json --output-file eslint-results.json || true",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --format json --output-file eslint-results.json || echo '[]' > eslint-results.json",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

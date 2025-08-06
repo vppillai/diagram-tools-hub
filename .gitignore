@@ -47,5 +47,4 @@ tldraw-sync-backend/.assets/
 # TLDraw frontend build artifacts
 tldraw/node_modules/
 tldraw/dist/
-tldraw/coverage/
-tldraw/eslint-results.json 
+tldraw/coverage/ 

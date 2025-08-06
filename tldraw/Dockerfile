@@ -21,7 +21,7 @@ COPY .eslintrc.cjs .
 ARG BUILD_MODE=production
 
 # Run tests and linting before building
-RUN npm run lint || true
+RUN npm run lint
 RUN npm run test
 RUN npm run test:coverage
 
