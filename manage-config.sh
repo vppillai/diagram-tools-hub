@@ -533,23 +533,13 @@ enable_https_config() {
 http_only() {
     log_info "Switching to HTTP-only mode..."
     
-    # Restore original nginx configuration
-    if [ -f "./engine/nginx.conf.backup" ]; then
-        cp "./engine/nginx.conf.backup" "./engine/nginx.conf"
-        log_info "Restored original nginx configuration"
-    else
-        log_warning "No backup nginx configuration found. Creating HTTP-only configuration."
-        create_http_only_config
-    fi
+    # Always create HTTP-only nginx configuration for CI compatibility
+    log_info "Creating HTTP-only nginx configuration"
+    create_http_only_config
     
-    # Restore original docker-compose configuration
-    if [ -f "./docker-compose.yml.backup" ]; then
-        cp "./docker-compose.yml.backup" "./docker-compose.yml"
-        log_info "Restored original docker-compose configuration"
-    else
-        log_warning "No backup docker-compose configuration found. Creating HTTP-only configuration."
-        create_http_only_docker_compose
-    fi
+    # Always create HTTP-only docker-compose configuration for CI compatibility
+    log_info "Creating HTTP-only docker-compose configuration"
+    create_http_only_docker_compose
     
     # Restart services
     log_info "Restarting services in HTTP-only mode..."

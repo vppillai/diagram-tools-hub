@@ -11,6 +11,7 @@ certs/
 
 # Generated configuration files
 engine/nginx.conf
+docker-compose.yml
 
 # Backup files
 *.backup
