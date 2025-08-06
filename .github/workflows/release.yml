@@ -103,7 +103,6 @@ jobs:
             ### 🐳 Docker Images
             
             - **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:${{ steps.normalize_version.outputs.normalized_version }}`
-            - **Engine**: `ghcr.io/${{ github.repository }}/engine:${{ steps.normalize_version.outputs.normalized_version }}`
             
             ### 🚀 Quick Start
             
@@ -182,16 +181,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push Engine image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./engine
-          file: ./engine/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Update release notes with Docker images
         uses: actions/github-script@v7
@@ -209,13 +198,11 @@ jobs:
             
             const dockerImages = '\n\n### 🐳 Docker Images\n\n' +
               '- **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:' + version + '`\n' +
-              '- **Engine**: `ghcr.io/${{ github.repository }}/engine:' + version + '`\n' +
               '- **Latest**: `ghcr.io/${{ github.repository }}/tldraw:latest`\n\n' +
               '### 🚀 Quick Start with Docker\n\n' +
               '```bash\n' +
               '# Pull the latest images\n' +
-              'docker pull ghcr.io/${{ github.repository }}/tldraw:' + version + '\n' +
-              'docker pull ghcr.io/${{ github.repository }}/engine:' + version + '\n\n' +
+              'docker pull ghcr.io/${{ github.repository }}/tldraw:' + version + '\n\n' +
               '# Or use docker-compose with specific version\n' +
               'git clone https://github.com/${{ github.repository }}.git\n' +
               'cd diagram-tools-hub\n' +

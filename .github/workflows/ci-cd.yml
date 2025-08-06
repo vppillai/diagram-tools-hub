@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [tldraw, engine]
+        service: [tldraw]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,13 +26,8 @@ jobs:
 
       - name: Build service
         run: |
-          if [ "${{ matrix.service }}" = "tldraw" ]; then
-            cd ./tldraw
-            docker build -t ${{ matrix.service }}:test .
-          else
-            cd ./engine
-            docker build -t ${{ matrix.service }}:test .
-          fi
+          cd ./${{ matrix.service }}
+          docker build -t ${{ matrix.service }}:test .
           echo "✅ ${{ matrix.service }} image built successfully"
 
   # Build and push Docker images
@@ -42,7 +37,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix:
-        service: [tldraw, engine]
+        service: [tldraw]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
