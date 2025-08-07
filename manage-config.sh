@@ -611,6 +611,23 @@ http {
             return 301 /drawio/;
         }
 
+        # Draw.io embed-specific handling (more permissive for embedding)
+        location /drawio/embed/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # More permissive framing for embed mode
+            add_header X-Frame-Options "" always;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
         location /drawio/ {
             proxy_pass http://drawio_backend/;
             proxy_set_header Host $host;
@@ -756,6 +773,23 @@ http {
         # Draw.io reverse proxy
         location /drawio {
             return 301 /drawio/;
+        }
+
+        # Draw.io embed-specific handling (more permissive for embedding)
+        location /drawio/embed/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # More permissive framing for embed mode
+            add_header X-Frame-Options "" always;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
         }
 
         location /drawio/ {
@@ -979,6 +1013,23 @@ http {
         # Draw.io reverse proxy
         location /drawio {
             return 301 /drawio/;
+        }
+
+        # Draw.io embed-specific handling (more permissive for embedding)
+        location /drawio/embed/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # More permissive framing for embed mode
+            add_header X-Frame-Options "" always;
+            
+            # WebSocket support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
         }
 
         location /drawio/ {

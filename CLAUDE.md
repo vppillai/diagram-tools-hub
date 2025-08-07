@@ -38,6 +38,13 @@ The project uses Docker Compose to orchestrate multiple services behind an Nginx
 - `sudo ./manage-config.sh uninstall-service` - Remove systemd service
 - `./manage-config.sh service-status` - Check systemd service status
 
+### Production Deployment
+- `./manage-config.sh start` - Deploy in production mode (NODE_ENV=production)
+- `./manage-config.sh clean-rebuild` - Complete production rebuild from scratch
+- `./manage-config.sh system-metrics` - Monitor production performance
+- Visit `/embed-test.html` to verify Draw.io embed functionality
+- All services optimized for production with security headers and SSL
+
 ### TLDraw Development
 - `cd tldraw && npm run dev` - Start TLDraw in development mode (port 3000)
 - `cd tldraw && npm run build` - Build TLDraw for production
@@ -144,3 +151,11 @@ Update `.env` with custom ports and restart services
 - Browser security warnings are normal for self-signed certificates
 - Remove `./certs/` directory to regenerate certificates
 - Use `./manage-config.sh http-only` to disable SSL entirely
+
+## Development Best Practices
+
+- Use the manage-config.sh script whenever possible
+
+## Known Issues
+
+- The log functions in manage-config does not exit. It just keeps monitoring logs until stopped

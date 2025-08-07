@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Draw.io Embed - Diagram Tools Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-bottom: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: #3498db;
+            text-decoration: none;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 120px);
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .left-panel, .right-panel {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: #34495e;
+            color: white;
+            padding: 15px 20px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .xml-editor {
+            width: 100%;
+            height: calc(100% - 60px);
+            border: none;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            background: #2c3e50;
+            color: #ecf0f1;
+            resize: none;
+            outline: none;
+        }
+
+        .drawio-container {
+            height: calc(100% - 60px);
+            position: relative;
+        }
+
+        .drawio-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.3s;
+            margin-left: 5px;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .status {
+            padding: 10px 20px;
+            background: #ecf0f1;
+            border-top: 1px solid #bdc3c7;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+
+        .status.success {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+
+        .status.error {
+            background: #fadbd8;
+            color: #e74c3c;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .left-panel, .right-panel {
+                min-height: 400px;
+            }
+            
+            .xml-editor {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/" class="back-link">← Back to Diagram Tools Hub</a>
+        <h1>Interactive Draw.io Embed</h1>
+        <p>Edit XML on the left, see changes in Draw.io on the right. Use Draw.io's "Save & Exit" to sync back.</p>
+        <p style="font-size: 14px; color: #27ae60; margin-top: 5px;">
+            <strong>Reference Implementation:</strong> Bidirectional XML sync with Draw.io embed
+        </p>
+    </div>
+
+    <div class="container">
+        <!-- XML Editor Panel -->
+        <div class="left-panel">
+            <div class="panel-header">
+                <span>XML Editor</span>
+                <div class="controls">
+                    <button class="btn" onclick="loadXmlToDrawio()">Load to Draw.io</button>
+                    <button class="btn" onclick="resetToDefault()">Reset</button>
+                </div>
+            </div>
+            <textarea id="xmlEditor" class="xml-editor" placeholder="Enter Draw.io XML here..."></textarea>
+            <div id="xmlStatus" class="status">Ready</div>
+        </div>
+
+        <!-- Draw.io Embed Panel -->
+        <div class="right-panel">
+            <div class="panel-header">
+                <span>Draw.io Editor</span>
+            </div>
+            <div class="drawio-container">
+                <div id="loading" class="loading">
+                    <div class="spinner"></div>
+                    <div>Loading Draw.io...</div>
+                </div>
+                <iframe id="drawioFrame" class="drawio-iframe" style="display: none;"></iframe>
+            </div>
+            <div id="drawioStatus" class="status">Initializing...</div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Interactive Draw.io Embed Reference Implementation
+         * 
+         * This demonstrates bidirectional XML sync between a text editor and Draw.io embed.
+         * Key concepts:
+         * - Draw.io expects raw XML strings via postMessage after "ready" event
+         * - XML format must contain <mxfile> or <mxGraphModel> root elements
+         * - Draw.io sends XML back via postMessage on save/export events
+         */
+
+        // Default XML - minimal structure that Draw.io accepts
+        const defaultXml = `<mxfile><diagram id="demo"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="2" value="Hello World" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="120" height="60" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`;
+
+        let drawioFrame;
+        let isDrawioReady = false;
+
+        /**
+         * Initialize the application
+         */
+        function init() {
+            drawioFrame = document.getElementById('drawioFrame');
+            document.getElementById('xmlEditor').value = defaultXml;
+            
+            setupDrawio();
+            setupXmlEditor();
+        }
+
+        /**
+         * Setup Draw.io iframe and message handling
+         */
+        function setupDrawio() {
+            // Load Draw.io with embed parameters
+            const drawioUrl = `/drawio/embed/?embed=1&ui=atlas&libraries=1&spin=1&noExitBtn=1&returnbounds`;
+            drawioFrame.src = drawioUrl;
+            
+            // Setup postMessage communication
+            setupMessageHandling();
+            
+            // Handle iframe load events
+            drawioFrame.onload = function() {
+                updateStatus('drawioStatus', 'Draw.io iframe loaded, waiting for ready signal...', '');
+                
+                // Show iframe after load
+                setTimeout(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    drawioFrame.style.display = 'block';
+                }, 1000);
+            };
+            
+            drawioFrame.onerror = function() {
+                document.getElementById('loading').style.display = 'none';
+                updateStatus('drawioStatus', 'Failed to load Draw.io embed service', 'error');
+            };
+        }
+
+        /**
+         * Setup XML editor behavior
+         */
+        function setupXmlEditor() {
+            document.getElementById('xmlEditor').addEventListener('input', function() {
+                updateStatus('xmlStatus', 'Modified - click "Load to Draw.io" to update', '');
+            });
+        }
+
+        /**
+         * Setup postMessage communication with Draw.io
+         */
+        function setupMessageHandling() {
+            window.addEventListener('message', function(event) {
+                // Security: only accept messages from our domain
+                if (event.origin !== window.location.origin) {
+                    return;
+                }
+                
+                const data = event.data;
+                
+                // Handle XML data from Draw.io (save/export events)
+                if (typeof data === 'string' && (data.includes('<mxfile') || data.includes('<mxGraphModel'))) {
+                    document.getElementById('xmlEditor').value = data;
+                    updateStatus('xmlStatus', 'XML received from Draw.io', 'success');
+                    updateStatus('drawioStatus', 'Diagram exported successfully', 'success');
+                    return;
+                }
+                
+                // Handle Draw.io events
+                if (data && data.event) {
+                    switch (data.event) {
+                        case 'ready':
+                            // Draw.io is ready - load default diagram
+                            updateStatus('drawioStatus', 'Draw.io ready - loading default diagram', 'success');
+                            isDrawioReady = true;
+                            
+                            setTimeout(() => {
+                                drawioFrame.contentWindow.postMessage(defaultXml, window.location.origin);
+                                updateStatus('drawioStatus', 'Default diagram loaded', 'success');
+                            }, 500);
+                            break;
+                            
+                        case 'save':
+                            // User clicked Save & Exit in Draw.io
+                            if (data.xml) {
+                                document.getElementById('xmlEditor').value = data.xml;
+                                updateStatus('xmlStatus', 'XML updated from Draw.io save', 'success');
+                                updateStatus('drawioStatus', 'Diagram saved successfully', 'success');
+                            }
+                            break;
+                            
+                        case 'export':
+                            // Response to export request
+                            if (data.xml) {
+                                document.getElementById('xmlEditor').value = data.xml;
+                                updateStatus('xmlStatus', 'XML exported from Draw.io', 'success');
+                                updateStatus('drawioStatus', 'Export completed', 'success');
+                            }
+                            break;
+                            
+                        case 'exit':
+                            updateStatus('drawioStatus', data.modified ? 'Editor closed with unsaved changes' : 'Editor closed', '');
+                            break;
+                    }
+                } else if (data === 'ready') {
+                    // Handle simple ready message
+                    updateStatus('drawioStatus', 'Draw.io ready', 'success');
+                    isDrawioReady = true;
+                    
+                    setTimeout(() => {
+                        drawioFrame.contentWindow.postMessage(defaultXml, window.location.origin);
+                        updateStatus('drawioStatus', 'Default diagram loaded', 'success');
+                    }, 500);
+                }
+            }, false);
+        }
+
+        /**
+         * Load XML from editor into Draw.io
+         */
+        function loadXmlToDrawio() {
+            const xml = document.getElementById('xmlEditor').value.trim();
+            
+            if (!xml) {
+                updateStatus('xmlStatus', 'No XML to load', 'error');
+                return;
+            }
+
+            if (!isDrawioReady) {
+                updateStatus('xmlStatus', 'Draw.io not ready yet', 'error');
+                return;
+            }
+
+            // Validate XML format
+            if (!xml.includes('<mxfile') && !xml.includes('<mxGraphModel')) {
+                updateStatus('xmlStatus', 'Invalid Draw.io XML format', 'error');
+                return;
+            }
+            
+            try {
+                // Send raw XML string to Draw.io
+                drawioFrame.contentWindow.postMessage(xml, window.location.origin);
+                updateStatus('xmlStatus', 'XML sent to Draw.io', 'success');
+                updateStatus('drawioStatus', 'XML loaded - check canvas', 'success');
+            } catch (error) {
+                updateStatus('xmlStatus', 'Error loading XML: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Reset to default diagram
+         */
+        function resetToDefault() {
+            document.getElementById('xmlEditor').value = defaultXml;
+            loadXmlToDrawio();
+            updateStatus('xmlStatus', 'Reset to default diagram', 'success');
+        }
+
+        /**
+         * Update status message
+         */
+        function updateStatus(elementId, message, type) {
+            const statusElement = document.getElementById(elementId);
+            statusElement.textContent = message;
+            statusElement.className = 'status ' + type;
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
