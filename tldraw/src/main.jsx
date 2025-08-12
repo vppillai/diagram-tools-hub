@@ -11,6 +11,8 @@ import {
     useTldrawUser,
     createTLStore,
     defaultShapeUtils,
+    DefaultSizeStyle,
+    DefaultFontStyle,
 } from '@tldraw/tldraw'
 import '@tldraw/tldraw/tldraw.css'
 
@@ -109,6 +111,29 @@ const COLOR_SHORTCUTS = {
         'indigo': ['purple', 'light-blue', 'navy', 'dark-blue'],
         'violet': ['purple', 'magenta', 'pink'],
         'grey': ['gray']
+    }
+}
+
+// Style preferences management
+const STYLE_PREFS_KEY = 'tldraw-style-preferences'
+
+function getStylePreferences() {
+    try {
+        const saved = localStorage.getItem(STYLE_PREFS_KEY)
+        return saved ? JSON.parse(saved) : {}
+    } catch (e) {
+        return {}
+    }
+}
+
+function saveStylePreference(toolId, styleProp, value) {
+    try {
+        const prefs = getStylePreferences()
+        if (!prefs[toolId]) prefs[toolId] = {}
+        prefs[toolId][styleProp] = value
+        localStorage.setItem(STYLE_PREFS_KEY, JSON.stringify(prefs))
+    } catch (e) {
+        console.warn('Failed to save style preference:', e)
     }
 }
 
@@ -382,16 +407,75 @@ function SyncTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
-                    // Set default zoom to 50%
+                    // Set default zoom to 75%
                     setTimeout(() => {
                         try {
                             const camera = editor.getCamera()
-                            editor.setCamera({ ...camera, z: 0.25 })
+                            editor.setCamera({ ...camera, z: 0.75 })
                         } catch (error) {
                             console.log('Could not set initial zoom level')
                         }
                     }, 100)
                     
+                    // Tool change handling for default styles
+                    let currentTool = editor.getCurrentToolId()
+                    const stylePrefs = getStylePreferences()
+                    
+                    // Apply saved preferences for the current tool
+                    const applyToolPreferences = (toolId) => {
+                        const prefs = stylePrefs[toolId]
+                        if (prefs) {
+                            if (prefs.size && (toolId === 'draw' || toolId === 'highlight')) {
+                                editor.setStyleForNextShapes(DefaultSizeStyle, prefs.size)
+                            }
+                            if (prefs.font && (toolId === 'text' || toolId === 'note')) {
+                                editor.setStyleForNextShapes(DefaultFontStyle, prefs.font)
+                            }
+                        } else {
+                            // Set defaults for first time
+                            if (toolId === 'draw' || toolId === 'highlight') {
+                                editor.setStyleForNextShapes(DefaultSizeStyle, 's')
+                                saveStylePreference(toolId, 'size', 's')
+                            }
+                            if (toolId === 'text' || toolId === 'note') {
+                                editor.setStyleForNextShapes(DefaultFontStyle, 'mono')
+                                saveStylePreference(toolId, 'font', 'mono')
+                            }
+                        }
+                    }
+                    
+                    // Monitor tool changes
+                    const checkToolChange = () => {
+                        const newTool = editor.getCurrentToolId()
+                        if (newTool !== currentTool) {
+                            currentTool = newTool
+                            applyToolPreferences(newTool)
+                        }
+                    }
+                    
+                    // Initial application
+                    applyToolPreferences(currentTool)
+                    
+                    // Check for tool changes periodically
+                    const toolCheckInterval = setInterval(checkToolChange, 100)
+                    
+                    // Listen for style changes to save preferences
+                    editor.sideEffects.registerAfterChangeHandler('instance', () => {
+                        const toolId = editor.getCurrentToolId()
+                        const instanceState = editor.getInstanceState()
+                        if (toolId === 'draw' || toolId === 'highlight') {
+                            const currentSize = instanceState.stylesForNextShape[DefaultSizeStyle.id]
+                            if (currentSize) {
+                                saveStylePreference(toolId, 'size', currentSize)
+                            }
+                        }
+                        if (toolId === 'text' || toolId === 'note') {
+                            const currentFont = instanceState.stylesForNextShape[DefaultFontStyle.id]
+                            if (currentFont) {
+                                saveStylePreference(toolId, 'font', currentFont)
+                            }
+                        }
+                    })
                     
                     // Use shared color configuration
                     const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
@@ -492,9 +576,10 @@ function SyncTldraw({ roomId }) {
                     // Add event listener with capture phase to intercept before TLDraw
                     document.addEventListener('keydown', handleKeydown, true)
                     
-                    // Cleanup function to remove event listener
+                    // Cleanup function to remove event listener and interval
                     return () => {
                         document.removeEventListener('keydown', handleKeydown, true)
+                        clearInterval(toolCheckInterval)
                     }
                 }}
             />
@@ -561,16 +646,75 @@ function LocalTldraw({ roomId }) {
                         window.editor = editor
                     }
                     
-                    // Set default zoom to 50%
+                    // Set default zoom to 75%
                     setTimeout(() => {
                         try {
                             const camera = editor.getCamera()
-                            editor.setCamera({ ...camera, z: 0.25 })
+                            editor.setCamera({ ...camera, z: 0.75 })
                         } catch (error) {
                             console.log('Could not set initial zoom level')
                         }
                     }, 100)
                     
+                    // Tool change handling for default styles
+                    let currentTool = editor.getCurrentToolId()
+                    const stylePrefs = getStylePreferences()
+                    
+                    // Apply saved preferences for the current tool
+                    const applyToolPreferences = (toolId) => {
+                        const prefs = stylePrefs[toolId]
+                        if (prefs) {
+                            if (prefs.size && (toolId === 'draw' || toolId === 'highlight')) {
+                                editor.setStyleForNextShapes(DefaultSizeStyle, prefs.size)
+                            }
+                            if (prefs.font && (toolId === 'text' || toolId === 'note')) {
+                                editor.setStyleForNextShapes(DefaultFontStyle, prefs.font)
+                            }
+                        } else {
+                            // Set defaults for first time
+                            if (toolId === 'draw' || toolId === 'highlight') {
+                                editor.setStyleForNextShapes(DefaultSizeStyle, 's')
+                                saveStylePreference(toolId, 'size', 's')
+                            }
+                            if (toolId === 'text' || toolId === 'note') {
+                                editor.setStyleForNextShapes(DefaultFontStyle, 'mono')
+                                saveStylePreference(toolId, 'font', 'mono')
+                            }
+                        }
+                    }
+                    
+                    // Monitor tool changes
+                    const checkToolChange = () => {
+                        const newTool = editor.getCurrentToolId()
+                        if (newTool !== currentTool) {
+                            currentTool = newTool
+                            applyToolPreferences(newTool)
+                        }
+                    }
+                    
+                    // Initial application
+                    applyToolPreferences(currentTool)
+                    
+                    // Check for tool changes periodically
+                    const toolCheckInterval = setInterval(checkToolChange, 100)
+                    
+                    // Listen for style changes to save preferences
+                    editor.sideEffects.registerAfterChangeHandler('instance', () => {
+                        const toolId = editor.getCurrentToolId()
+                        const instanceState = editor.getInstanceState()
+                        if (toolId === 'draw' || toolId === 'highlight') {
+                            const currentSize = instanceState.stylesForNextShape[DefaultSizeStyle.id]
+                            if (currentSize) {
+                                saveStylePreference(toolId, 'size', currentSize)
+                            }
+                        }
+                        if (toolId === 'text' || toolId === 'note') {
+                            const currentFont = instanceState.stylesForNextShape[DefaultFontStyle.id]
+                            if (currentFont) {
+                                saveStylePreference(toolId, 'font', currentFont)
+                            }
+                        }
+                    })
                     
                     // Use shared color configuration
                     const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
@@ -701,9 +845,10 @@ function LocalTldraw({ roomId }) {
                         }
                     }, 100)
                     
-                    // Cleanup function to remove event listener
+                    // Cleanup function to remove event listener and interval
                     return () => {
                         document.removeEventListener('keydown', handleKeydown, true)
+                        clearInterval(toolCheckInterval)
                     }
                 }}
             />
