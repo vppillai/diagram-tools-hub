@@ -362,7 +362,8 @@
 
         .status-grid {
             display: inline-grid;
-            grid-template-columns: repeat(3, 1fr);
+            /* auto-fit handles any number of services without per-tool layout edits */
+            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
             gap: 2rem;
             margin-top: 0.5rem;
             padding: 1.5rem;
@@ -452,7 +453,7 @@
             }
 
             .status-grid {
-                grid-template-columns: repeat(3, 1fr);
+                /* Inherits grid-template-columns (auto-fit) from base rule. */
                 gap: 1rem;
                 padding: 1rem;
             }
