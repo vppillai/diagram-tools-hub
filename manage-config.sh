@@ -967,7 +967,7 @@ services:
 
   # Draw.io container
   drawio:
-    image: jgraph/drawio
+    image: jgraph/drawio:30.0.1
     container_name: drawio-app
     environment:
       - DRAWIO_BASE_URL=/drawio
@@ -976,7 +976,7 @@ services:
 
   # Excalidraw container
   excalidraw:
-    image: excalidraw/excalidraw:latest
+    image: excalidraw/excalidraw@sha256:4542f30bea392b833822d0e7db4fa2220e6706ca962c082add2665159fa91758
     container_name: excalidraw-app
     restart: unless-stopped
 
@@ -1229,7 +1229,7 @@ services:
 
   # Draw.io container
   drawio:
-    image: jgraph/drawio
+    image: jgraph/drawio:30.0.1
     container_name: drawio-app
     environment:
       - DRAWIO_BASE_URL=/drawio
@@ -1238,7 +1238,7 @@ services:
 
   # Excalidraw container
   excalidraw:
-    image: excalidraw/excalidraw:latest
+    image: excalidraw/excalidraw@sha256:4542f30bea392b833822d0e7db4fa2220e6706ca962c082add2665159fa91758
     container_name: excalidraw-app
     restart: unless-stopped
 
