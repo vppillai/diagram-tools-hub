@@ -4,11 +4,12 @@
 [![Security Scan](https://github.com/vppillai/diagram-tools-hub/workflows/Security%20Scan/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/security.yml)
 [![Release Management](https://github.com/vppillai/diagram-tools-hub/workflows/🚀%20Release%20Management/badge.svg)](https://github.com/vppillai/diagram-tools-hub/actions/workflows/release.yml)
 
-A unified Docker-based platform that integrates three powerful diagramming tools behind an Nginx reverse proxy with HTTPS support:
+A unified Docker-based platform that integrates four powerful diagramming tools behind an Nginx reverse proxy with HTTPS support:
 
 - **Draw.io** - Professional diagrams and flowcharts
-- **Excalidraw** - Hand-drawn style diagrams and wireframes  
+- **Excalidraw** - Hand-drawn style diagrams and wireframes
 - **TLDraw** - Modern collaborative drawing canvas with real-time multi-user collaboration
+- **Whiteboard** - Low-latency, pen-optimized whiteboard for Wacom Intuos and other indirect-input pen tablets ([vppillai/whiteboard](https://github.com/vppillai/whiteboard), submodule pinned to a release tag)
 
 ## ✨ Key Features
 
@@ -46,10 +47,12 @@ A unified Docker-based platform that integrates three powerful diagramming tools
 
 **Production Mode (Default):**
 ```bash
-git clone https://github.com/vppillai/diagram-tools-hub.git
+git clone --recurse-submodules https://github.com/vppillai/diagram-tools-hub.git
 cd diagram-tools-hub
 ./manage-config.sh start        # Optimized production build
 ```
+
+> `--recurse-submodules` initializes the [whiteboard](https://github.com/vppillai/whiteboard) submodule (pinned to a release tag). If you cloned without it, run `git submodule update --init --recursive` from inside the repo before starting services.
 
 **Development Mode:**
 ```bash
@@ -64,9 +67,10 @@ Then open https://localhost:8080 in your browser.
 
 - **Main Hub**: https://localhost:8080 (or configured HTTPS_PORT)
 - **Draw.io**: https://localhost:8080/drawio/
-- **Excalidraw**: https://localhost:8080/excalidraw/  
+- **Excalidraw**: https://localhost:8080/excalidraw/
 - **TLDraw**: https://localhost:8080/tldraw/
 - **TLDraw Collaborative Room**: https://localhost:8080/tldraw/room-name
+- **Whiteboard**: https://localhost:8080/whiteboard/
 - **Health Check**: https://localhost:8080/health
 
 ## Service Management

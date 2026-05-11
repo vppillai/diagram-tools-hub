@@ -20,19 +20,30 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [tldraw]
+        service: [tldraw, whiteboard]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # whiteboard/ is a git submodule pinned to a release tag of
+          # vppillai/whiteboard. Without this, docker build in the
+          # whiteboard matrix entry would fail with an empty directory.
+          submodules: recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Build service
+        env:
+          SERVICE: ${{ matrix.service }}
         run: |
-          cd ./${{ matrix.service }}
-          docker build -t ${{ matrix.service }}:test .
-          echo "✅ ${{ matrix.service }} image built successfully"
+          cd "./$SERVICE"
+          if [ "$SERVICE" = "whiteboard" ]; then
+            docker build --build-arg BASE_PATH=/whiteboard/ -t "$SERVICE:test" .
+          else
+            docker build -t "$SERVICE:test" .
+          fi
+          echo "✅ $SERVICE image built successfully"
 
   # Build and push Docker images
   build-and-push:

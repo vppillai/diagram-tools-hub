@@ -237,6 +237,11 @@
             padding: 12px;
         }
 
+        .tool-icon.whiteboard {
+            background: #fff;
+            padding: 12px;
+        }
+
 
 
         .tool-icon img {
@@ -646,6 +651,25 @@
                 </div>
             </div>
 
+            <div class="tool-card">
+                <div class="tool-icon whiteboard">
+                    <img src="logos/whiteboard-logo.svg" alt="Whiteboard Logo" />
+                </div>
+                <h2>Whiteboard</h2>
+                <p>Low-latency, pen-optimized whiteboard tuned for Wacom Intuos and other indirect-input pen tablets.
+                    Offline-first.</p>
+                <div class="tool-buttons">
+                    <a href="/whiteboard/" class="btn btn-primary" onclick="launchTool('whiteboard')">
+                        Launch App
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                    </a>
+                    <a href="/whiteboard/" target="_blank" class="btn btn-secondary">New Tab</a>
+                </div>
+            </div>
+
 
         </div>
 
@@ -663,6 +687,10 @@
                 <div class="status-item">
                     <span class="status-indicator loading" id="tldraw-status"></span>
                     <span>tldraw</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-indicator loading" id="whiteboard-status"></span>
+                    <span>Whiteboard</span>
                 </div>
 
             </div>
@@ -695,7 +723,8 @@
             const services = [
                 { name: 'drawio', path: '/drawio/' },
                 { name: 'excalidraw', path: '/excalidraw/' },
-                { name: 'tldraw', path: '/tldraw/' }
+                { name: 'tldraw', path: '/tldraw/' },
+                { name: 'whiteboard', path: '/whiteboard/' }
             ];
 
             const statusPromises = services.map(async (service) => {

@@ -596,6 +596,10 @@ http {
         server tldraw-sync:3001;
     }
 
+    upstream whiteboard_backend {
+        server whiteboard:8787;
+    }
+
     server {
         listen 80;
         server_name localhost;
@@ -675,6 +679,20 @@ http {
             proxy_set_header Connection "upgrade";
         }
 
+        # Whiteboard reverse proxy (vppillai/whiteboard, submodule pinned to v1.0.0)
+        # Stateless static SPA; nginx strips the /whiteboard/ prefix on proxy_pass.
+        location /whiteboard {
+            return 301 /whiteboard/;
+        }
+
+        location /whiteboard/ {
+            proxy_pass http://whiteboard_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
         # Health check endpoint
         location /health {
             access_log off;
@@ -747,6 +765,10 @@ http {
 
     upstream tldraw_sync_backend {
         server tldraw-sync:3001;
+    }
+
+    upstream whiteboard_backend {
+        server whiteboard:8787;
     }
 
     # HTTPS server
@@ -873,11 +895,25 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
             # WebSocket support
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
+        }
+
+        # Whiteboard reverse proxy (vppillai/whiteboard, submodule pinned to v1.0.0)
+        # Stateless static SPA; nginx strips the /whiteboard/ prefix on proxy_pass.
+        location /whiteboard {
+            return 301 /whiteboard/;
+        }
+
+        location /whiteboard/ {
+            proxy_pass http://whiteboard_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
 
         # Handle favicon.ico requests
@@ -963,6 +999,19 @@ services:
       - ./tldraw-sync-backend/.assets:/app/.assets
     restart: unless-stopped
 
+  # Whiteboard - low-latency, pen-optimized whiteboard (vppillai/whiteboard)
+  # Source is a git submodule pinned at v1.0.0 (./whiteboard/).
+  # Built with BASE_PATH=/whiteboard/ so assets are prefixed correctly for the
+  # sub-path mount; nginx strips the prefix on proxy_pass.
+  whiteboard:
+    build:
+      context: ./whiteboard
+      dockerfile: Dockerfile
+      args:
+        BASE_PATH: /whiteboard/
+    container_name: whiteboard-app
+    restart: unless-stopped
+
 networks:
   default:
     name: diagram-tools-network
@@ -998,6 +1047,10 @@ http {
 
     upstream tldraw_sync_backend {
         server tldraw-sync:3001;
+    }
+
+    upstream whiteboard_backend {
+        server whiteboard:8787;
     }
 
     server {
@@ -1113,11 +1166,25 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
             # WebSocket support
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
+        }
+
+        # Whiteboard reverse proxy (vppillai/whiteboard, submodule pinned to v1.0.0)
+        # Stateless static SPA; nginx strips the /whiteboard/ prefix on proxy_pass.
+        location /whiteboard {
+            return 301 /whiteboard/;
+        }
+
+        location /whiteboard/ {
+            proxy_pass http://whiteboard_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
 
         # Handle favicon.ico requests
@@ -1192,6 +1259,19 @@ services:
     volumes:
       - ./tldraw-sync-backend/.rooms:/app/.rooms
       - ./tldraw-sync-backend/.assets:/app/.assets
+    restart: unless-stopped
+
+  # Whiteboard - low-latency, pen-optimized whiteboard (vppillai/whiteboard)
+  # Source is a git submodule pinned at v1.0.0 (./whiteboard/).
+  # Built with BASE_PATH=/whiteboard/ so assets are prefixed correctly for the
+  # sub-path mount; nginx strips the prefix on proxy_pass.
+  whiteboard:
+    build:
+      context: ./whiteboard
+      dockerfile: Dockerfile
+      args:
+        BASE_PATH: /whiteboard/
+    container_name: whiteboard-app
     restart: unless-stopped
 
 networks:

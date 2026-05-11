@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the **Diagram Tools Hub** - a unified Docker-based platform that integrates three diagramming tools:
-- **Draw.io** - Professional diagrams and flowcharts  
+This is the **Diagram Tools Hub** - a unified Docker-based platform that integrates four diagramming tools:
+- **Draw.io** - Professional diagrams and flowcharts
 - **Excalidraw** - Hand-drawn style diagrams and wireframes
 - **TLDraw** - Modern collaborative drawing canvas
+- **Whiteboard** - Low-latency, pen-optimized whiteboard for Wacom Intuos and other indirect-input pen tablets; offline-first; integrated via git submodule pinned to a release tag
 
 The project uses Docker Compose to orchestrate multiple services behind an Nginx reverse proxy with HTTPS support.
 
@@ -62,9 +63,10 @@ The project uses Docker Compose to orchestrate multiple services behind an Nginx
   - Routes traffic to backend services via upstream blocks
   - Serves unified dashboard at root path
 - **Draw.io** - Runs on port 8081, proxied to `/drawio/`
-- **Excalidraw** - Runs on port 8082, proxied to `/excalidraw/`  
+- **Excalidraw** - Runs on port 8082, proxied to `/excalidraw/`
 - **TLDraw** - Custom built React app on port 8083, proxied to `/tldraw/`
 - **TLDraw Sync** - WebSocket collaboration backend on port 3001 (internal only)
+- **Whiteboard** - Bun-served static SPA on port 8787, proxied to `/whiteboard/` (nginx strips the prefix). Stateless. Source is a git submodule under `./whiteboard/` pinned to a release tag of [vppillai/whiteboard](https://github.com/vppillai/whiteboard). Built at Docker-build time with `BASE_PATH=/whiteboard/`. To update: `cd whiteboard && git fetch && git checkout v<new-version> && cd .. && git add whiteboard && git commit ...`
 
 ### Key Configuration Files
 - `docker-compose.yml` - Service orchestration with configurable ports
@@ -124,9 +126,10 @@ COMPOSE_PROJECT_NAME=diagram-tools-hub  # Docker Compose project name
 
 - **Main Hub**: https://localhost:8080 (or configured HTTPS_PORT)
 - **Draw.io**: https://localhost:8080/drawio/
-- **Excalidraw**: https://localhost:8080/excalidraw/  
+- **Excalidraw**: https://localhost:8080/excalidraw/
 - **TLDraw**: https://localhost:8080/tldraw/
 - **TLDraw Collaborative Room**: https://localhost:8080/tldraw/room-name
+- **Whiteboard**: https://localhost:8080/whiteboard/
 - **Health Check**: https://localhost:8080/health
 
 ## Technology Stack
