@@ -3,18 +3,22 @@ import ReactDOM from 'react-dom/client'
 import { useSync } from '@tldraw/sync'
 import {
     AssetRecordType,
+    atom,
+    computed,
+    createUserId,
     getHashForString,
     getSnapshot,
     loadSnapshot,
     Tldraw,
+    UserRecordType,
     uniqueId,
-    useTldrawUser,
+    useTldrawCurrentUser,
     createTLStore,
     defaultShapeUtils,
     DefaultSizeStyle,
     DefaultFontStyle,
-} from '@tldraw/tldraw'
-import '@tldraw/tldraw/tldraw.css'
+} from 'tldraw'
+import 'tldraw/tldraw.css'
 
 // Get the current protocol and host
 const getBaseUrl = () => {
@@ -66,8 +70,8 @@ const multiplayerAssets = {
                 throw new Error(`Failed to upload asset: ${response.statusText}`)
             }
 
-            // Return just the URL string, not an object
-            return url
+            // tldraw v5: TLAssetStore.upload must return { src, meta? }, not bare URL.
+            return { src: url }
         } catch (error) {
             console.error('Asset upload failed:', error)
             throw error
@@ -327,20 +331,31 @@ function SyncTldraw({ roomId }) {
     
     // No complex activity tracking - keep it simple
 
-    // Create sync store with basic tab visibility info
+    // Create sync store. tldraw v5: `userInfo` and `pingUrl` are gone.
+    // Identity for presence/attribution comes from `users` (a TLUserStore).
     const wsUrl = getWebSocketUrl(roomId)
     console.log('TLDraw sync connecting to:', wsUrl)
-    
+
+    // Bridge React userPreferences state into a tldraw reactive atom so the
+    // TLUserStore's `currentUser` signal recomputes when name/color change.
+    const prefsAtom = React.useRef(atom('userPrefs', userPreferences)).current
+    React.useEffect(() => { prefsAtom.set(userPreferences) }, [prefsAtom, userPreferences])
+
+    const users = React.useMemo(() => ({
+        currentUser: computed('currentUser', () => {
+            const p = prefsAtom.get()
+            return UserRecordType.create({
+                id: createUserId(p.id),
+                name: p.name ?? '',
+                color: p.color ?? undefined,
+            })
+        }),
+    }), [prefsAtom])
+
     const store = useSync({
         uri: wsUrl,
         assets: multiplayerAssets,
-        userInfo: {
-            ...userPreferences,
-            // Only track tab visibility - simple and non-intrusive
-            isTabActive: isTabActive
-        },
-        // Prevent direct HTTP calls by providing explicit URLs
-        pingUrl: `${getBaseUrl()}/tldraw-sync/ping`,
+        users,
     })
 
     // Simple debounced name update - only update state after delay
@@ -357,8 +372,10 @@ function SyncTldraw({ roomId }) {
         []
     )
     
-    // Create user object for Tldraw component with simple debounced name updates
-    const user = useTldrawUser({ 
+    // Create user object for Tldraw component with simple debounced name updates.
+    // v5: useTldrawUser was removed; useTldrawCurrentUser takes the same shape
+    // and returns a TLCurrentUser to pass via the <Tldraw user={...}> prop.
+    const user = useTldrawCurrentUser({
         userPreferences,
         setUserPreferences: (update) => {
             if (typeof update === 'function') {
@@ -398,7 +415,7 @@ function SyncTldraw({ roomId }) {
                     maxImageDimension: 5000,
                     maxAssetSize: 10 * 1024 * 1024, // 10mb
                 }}
-                inferDarkMode
+                colorScheme={userPreferences?.colorScheme ?? 'system'}
                 onMount={(editor) => {
                     editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
                     // External asset handler registered for URL unfurling
@@ -640,12 +657,12 @@ function LocalTldraw({ roomId }) {
                     maxImageDimension: 5000,
                     maxAssetSize: 10 * 1024 * 1024, // 10mb
                 }}
-                inferDarkMode
+                colorScheme="system"
                 onMount={(editor) => {
                     if (typeof window !== 'undefined') {
                         window.editor = editor
                     }
-                    
+
                     // Set default zoom to 75%
                     setTimeout(() => {
                         try {
