@@ -11,7 +11,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - Pull requests to `main`
 
 **Features:**
-- ✅ Build and test TLDraw application
+- ✅ Build and test TLDraw and Whiteboard applications (matrix; submodules: recursive)
 - ✅ Validate Docker Compose configuration
 - ✅ Security scanning with Trivy
 - ✅ Staging and production deployment hooks
