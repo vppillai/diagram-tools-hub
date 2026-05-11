@@ -362,8 +362,11 @@
 
         .status-grid {
             display: inline-grid;
-            /* auto-fit handles any number of services without per-tool layout edits */
-            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+            /* inline-grid is content-sized; the parent .status uses text-align:center
+             * to horizontally center the grid. Bump the column count when adding
+             * more tools — auto-fit collapses with inline-grid (no parent width
+             * to expand into) and would stack items vertically. */
+            grid-template-columns: repeat(4, 1fr);
             gap: 2rem;
             margin-top: 0.5rem;
             padding: 1.5rem;
@@ -453,7 +456,7 @@
             }
 
             .status-grid {
-                /* Inherits grid-template-columns (auto-fit) from base rule. */
+                grid-template-columns: repeat(4, 1fr);
                 gap: 1rem;
                 padding: 1rem;
             }
