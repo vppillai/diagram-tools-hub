@@ -47,4 +47,7 @@ tldraw-sync-backend/.assets/
 
 # TLDraw frontend build artifacts
 tldraw/node_modules/
-tldraw/dist/ 
+tldraw/dist/
+
+# Git worktrees for isolated feature work
+.worktrees/
