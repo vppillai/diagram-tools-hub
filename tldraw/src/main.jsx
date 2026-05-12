@@ -572,13 +572,21 @@ function setupCanvasDefaults(editor) {
     applyToolPreferences(editor.getCurrentToolId())
 
     // Reactive tool/style tracking — replaces the v1.3 100 ms setInterval.
+    //
+    // The current tool ID lives on the editor's state machine
+    // (`editor.root`), NOT on the instance record — so we have to
+    // `getCurrentToolId()` inside the handler instead of pulling it off
+    // the `next` arg. (Did try `next.currentToolId` first; it was
+    // undefined and the tool-switch branch never fired, which is why
+    // text-tool defaults weren't getting applied.)
     let lastTool = editor.getCurrentToolId()
     const removeInstanceHandler = editor.sideEffects.registerAfterChangeHandler(
         'instance',
         (_prev, next) => {
-            if (next.currentToolId !== lastTool) {
-                lastTool = next.currentToolId
-                applyToolPreferences(lastTool)
+            const toolId = editor.getCurrentToolId()
+            if (toolId !== lastTool) {
+                lastTool = toolId
+                applyToolPreferences(toolId)
             }
             const styles = next.stylesForNextShape || {}
             if (SIZE_TOOLS.has(lastTool)) {
