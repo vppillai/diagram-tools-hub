@@ -2,27 +2,32 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Install wget for health check
+# wget powers the HEALTHCHECK below.
 RUN apk add --no-cache wget
 
-# Copy package files
-COPY package.json ./
+# Lockfile + manifest first for layer caching.
+COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm install
+# npm ci is deterministic — same package-lock.json → same dep tree across
+# rebuilds. (Was `npm install`, which silently drifted across builds.)
+RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copy application code
 COPY server.js ./
 
-# Create directories for data persistence
-RUN mkdir -p ./.rooms ./.assets
+# Persistent state directories — created here so the chown below sets the
+# right ownership before USER switch.
+RUN mkdir -p ./.rooms ./.assets \
+ && addgroup -S app \
+ && adduser -S -G app app \
+ && chown -R app:app /app
 
-# Internal port only - accessed via nginx proxy
+USER app
+
 EXPOSE 3001
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 -O /dev/null http://localhost:3001/health || exit 1
 
-# Start server
-CMD ["npm", "start"]
+# Exec form so signals (SIGTERM from docker stop) reach Node directly —
+# `npm start` would swallow them and defeat the shutdown handler.
+CMD ["node", "server.js"]
