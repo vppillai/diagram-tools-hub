@@ -26,6 +26,7 @@ import {
     useTldrawCurrentUser,
     DefaultContextMenu,
     DefaultContextMenuContent,
+    GeoShapeGeoStyle,
 } from 'tldraw'
 import 'tldraw/tldraw.css'
 
@@ -189,27 +190,28 @@ const QUICK_TOOLS_9 = [
     { id: 'geo:ellipse',   icon: 'geo-ellipse',    label: 'Ellipse' },
 ]
 
-// Inline stylesheet for the quick-pick panel. Lives in the component so
-// it's self-contained; React reconciles a single <style> tag across renders.
+// Stylesheet for the quick-pick panel — injected once into <head> on first
+// component mount, NOT rendered inline inside the menu. Why: a <style> tag
+// inline inside Radix's ContextMenu.Portal counts as a non-menu child of
+// the menu wrapper, which seems to confuse tldraw's child-shape heuristics
+// and the menu wrapper's vertical layout (DefaultContextMenuContent items
+// end up below the fold or omitted on first render). Hoisting to <head>
+// makes the menu's children purely TldrawUiMenuGroup-shaped.
 //
-// Theme-awareness via `currentColor`: tldraw sets the appropriate text color
-// on the menu container per theme (black-ish in light, white-ish in dark).
-// We INHERIT — never hard-code — so the icons, text, hover backgrounds, and
-// borders all flip with the theme automatically. The one rule that locked
-// us into black-on-black before was anchoring to var(--color-text, #1d1d1d):
-// when tldraw's actual var name differs (which it does on v5), the #1d1d1d
-// fallback kicked in for dark mode → invisible.
+// Sizes are deliberately compact so the whole panel takes ~140 px of
+// vertical space — leaves room for tldraw's ~12 default items below
+// before any menu clipping kicks in.
+const QUICKPICK_STYLE_ID = 'qp-quickpick-css'
 const QUICKPICK_CSS = `
 .qp-root {
-    padding: 10px 10px 6px;
-    min-width: 220px;
-    /* color: inherit from menu container — tldraw sets this per theme. */
+    padding: 6px;
+    min-width: 200px;
 }
 .qp-swatches {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
-    margin-bottom: 10px;
+    gap: 4px;
+    margin-bottom: 6px;
 }
 .qp-swatch {
     aspect-ratio: 1 / 1;
@@ -219,31 +221,28 @@ const QUICKPICK_CSS = `
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     cursor: pointer;
     padding: 0;
-    transition: transform 0.08s ease-out, box-shadow 0.08s ease-out;
+    transition: transform 0.08s ease-out;
 }
 .qp-swatch:hover {
     transform: scale(1.12);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .qp-swatch:focus-visible {
     outline: 2px solid var(--color-selected, #3b82f6);
     outline-offset: 2px;
 }
 
-/* Tool grid: all 9 quick-pick tools share one icon-only square style.
-   3x3 layout, matching the swatch grid's symmetry and tldraw's own
-   toolbar idiom. Tooltips (title=) provide the label for discovery. */
+/* Tool grid: 9 icon-only squares in a 3x3 layout. Matches the swatch
+   grid's symmetry and tldraw's own toolbar idiom. Tooltips carry labels. */
 .qp-tools {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-    margin-bottom: 4px;
+    gap: 3px;
 }
 .qp-tool {
     appearance: none;
     aspect-ratio: 1 / 1;
     padding: 0;
-    border-radius: 7px;
+    border-radius: 6px;
     border: 1px solid transparent;
     background: color-mix(in srgb, currentColor 6%, transparent);
     color: inherit;
@@ -266,15 +265,30 @@ const QUICKPICK_CSS = `
 }
 .qp-tool .tlui-icon,
 .qp-tool svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     color: inherit;
     fill: currentColor;
 }
 `
 
+// Inject the quickpick CSS into <head> exactly once. Idempotent across
+// component re-renders, across multiple Tldraw instances on the page, and
+// across StrictMode double-invocation.
+function useInjectQuickpickCSS() {
+    React.useEffect(() => {
+        if (typeof document === 'undefined') return
+        if (document.getElementById(QUICKPICK_STYLE_ID)) return
+        const style = document.createElement('style')
+        style.id = QUICKPICK_STYLE_ID
+        style.textContent = QUICKPICK_CSS
+        document.head.appendChild(style)
+    }, [])
+}
+
 function QuickPickContextMenu(props) {
     const editor = useEditor()
+    useInjectQuickpickCSS()
 
     // Plain <button> elements aren't Radix menu items, so they don't auto-close
     // the context menu on click. Radix listens for Escape to close — dispatch
@@ -303,27 +317,40 @@ function QuickPickContextMenu(props) {
         [editor, closeMenu]
     )
 
-    // Tool ids in QUICK_TOOLS_9 may be 'geo:rectangle' style; split into
-    // (tool, info) for setCurrentTool's second-arg signature.
+    // Tool ids prefixed 'geo:' map to geo-shape variants. The geo tool's
+    // second-arg `info` ({ geo: '...' }) is NOT respected in v5 — the tool
+    // reads its variant from the GeoShapeGeoStyle style prop instead. So
+    // we set the style FIRST, then activate the tool. This is the same
+    // pattern used for color (setStyleForNextShapes + setCurrentTool).
+    //
+    // Bug repro before this fix: with bottom toolbar set to 'heart', both
+    // Rectangle and Ellipse buttons drew hearts — because only the tool
+    // was being switched, not the variant.
     const dispatchTool = React.useCallback(
         (id) => {
             if (id.startsWith('geo:')) {
-                pickTool('geo', { geo: id.slice(4) })
+                const variant = id.slice(4)
+                try {
+                    editor.setStyleForNextShapes(GeoShapeGeoStyle, variant)
+                } catch (err) {
+                    console.warn(`Failed to set geo variant ${variant}:`, err)
+                }
+                pickTool('geo')
             } else {
                 pickTool(id)
             }
         },
-        [pickTool]
+        [editor, pickTool]
     )
 
     return (
         <DefaultContextMenu {...props}>
-            <style>{QUICKPICK_CSS}</style>
-            {/* Wrap custom JSX in TldrawUiMenuGroup so DefaultContextMenu's
-                child-shape expectation (menu primitives) is satisfied. Raw
-                divs as direct children break the menu context's setup,
-                which in turn prevents DefaultContextMenuContent from
-                rendering cut/copy/paste/export/etc. below. */}
+            {/* Custom panel wrapped in TldrawUiMenuGroup so the menu wrapper's
+                child-shape expectation (only menu primitives) is satisfied.
+                CSS is injected into <head> separately (see
+                useInjectQuickpickCSS above) — keeping it out of the menu's
+                child tree avoids any layout / hoisting weirdness with
+                inline <style> inside Radix portals. */}
             <TldrawUiMenuGroup id="qp-quick">
                 <div className="qp-root">
                     <div className="qp-swatches" role="group" aria-label="Quick colors">
@@ -758,6 +785,19 @@ function SyncTldraw({ roomId }) {
                     // is for drawing first; selection is a secondary mode.
                     editor.setCurrentTool('draw')
 
+                    // Default opacity 100% for next shapes. tldraw v5's
+                    // setOpacityForNextShapes lives on the editor; some
+                    // users land with sub-100% opacity persisted from a
+                    // previous session. Explicit set on mount is harmless
+                    // if the default is already 1.0.
+                    try {
+                        if (typeof editor.setOpacityForNextShapes === 'function') {
+                            editor.setOpacityForNextShapes(1)
+                        }
+                    } catch {
+                        // Older or future versions may not have this method.
+                    }
+
                     // Set default zoom to 75%
                     setTimeout(() => {
                         try {
@@ -1001,6 +1041,15 @@ function LocalTldraw({ roomId }) {
                     // Default to the draw (pen) tool on page load — matches
                     // the vppillai/whiteboard mental model.
                     editor.setCurrentTool('draw')
+
+                    // Default opacity 100% for next shapes.
+                    try {
+                        if (typeof editor.setOpacityForNextShapes === 'function') {
+                            editor.setOpacityForNextShapes(1)
+                        }
+                    } catch {
+                        // Older or future versions may not have this method.
+                    }
 
                     // Set default zoom to 75%
                     setTimeout(() => {
