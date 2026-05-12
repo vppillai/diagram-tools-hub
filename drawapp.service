@@ -21,12 +21,17 @@ RestartSec=10
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=DOCKER_COMPOSE_IGNORE_ORPHANS=1
 
-# Security settings
+# Security settings.
+# ProtectHome is read-only (not full true) because the service runs as
+# root and calls `docker compose …`, which reads /root/.docker/config.json
+# for registry auth; full ProtectHome masks /root entirely and the docker
+# CLI errors out. /root/.docker is added to ReadWritePaths so credential
+# helpers' caches under it remain writable.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/path/to/drawApp
+ProtectHome=read-only
+ReadWritePaths=/path/to/drawApp /root/.docker
 
 [Install]
 WantedBy=multi-user.target 

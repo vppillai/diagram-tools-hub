@@ -44,6 +44,8 @@ cd diagram-tools-hub
 ```
 
 > `--recurse-submodules` initializes the [whiteboard](https://github.com/vppillai/whiteboard) submodule (pinned to a release tag). If you cloned without it, run `git submodule update --init --recursive` from inside the repo before starting services.
+>
+> **Upgrading an existing clone:** `git pull` does not initialize newly-added submodules. `manage-config.sh start` (and `rebuild`) now auto-init missing submodules before building, so the upgrade path is `git pull && ./manage-config.sh rebuild`. If you'd rather do it explicitly: `git submodule update --init --recursive`.
 
 **Development Mode:**
 ```bash
