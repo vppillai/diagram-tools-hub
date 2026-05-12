@@ -44,15 +44,23 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: 'Trivy Security Scan'
 
-      # `continue-on-error: true` was here, which made the
-      # `--severity-threshold=high` flag meaningless — high/critical CVEs
-      # got logged as warnings and the job still passed. Removed.
-      - name: Run Snyk security scan
-        run: |
-          cd ./tldraw
-          npx snyk test --severity-threshold=high
+      # Snyk needs (a) node_modules present so it can resolve the dep
+      # tree and (b) a SNYK_TOKEN secret. The earlier version of this
+      # step did neither and was masked by `continue-on-error: true` —
+      # the threshold flag did nothing. This version installs deps,
+      # and skips cleanly when the token isn't configured so the
+      # severity threshold can actually fail the job when it matters.
+      - name: Run Snyk security scan (tldraw)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "::notice::SNYK_TOKEN not configured — skipping Snyk scan."
+            exit 0
+          fi
+          cd ./tldraw
+          npm install --no-audit --no-fund
+          npx snyk test --severity-threshold=high
 
       # Tag-pinned (was @main). Same supply-chain reasoning as trivy-action.
       - name: Check for secrets in code
