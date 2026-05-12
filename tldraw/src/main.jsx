@@ -167,17 +167,24 @@ const QUICK_COLOR_HEX = {
     'red': '#e03131',
 }
 
-// Secondary tools grid — 6 tools laid out as 3 columns. Adds the most-used
-// drawing/board tools beyond Draw/Erase/Select, as icon-only square buttons.
-// Less-used tools (highlighter, note, frame, hand, etc.) stay in the
-// "More tools" submenu below.
-const SECONDARY_TOOLS = [
-    { id: 'text', icon: 'tool-text', label: 'Text' },
-    { id: 'arrow', icon: 'tool-arrow', label: 'Arrow' },
-    { id: 'line', icon: 'tool-line', label: 'Line' },
-    { id: 'laser', icon: 'tool-laser', label: 'Laser' },
-    { id: 'geo:rectangle', icon: 'geo-rectangle', label: 'Rectangle' },
-    { id: 'geo:ellipse', icon: 'geo-ellipse', label: 'Ellipse' },
+// Tool grid — all 9 quick-pick tools share one visual treatment (icon-only
+// squares in a 3x3 grid). Matches tldraw's own toolbar idiom and the
+// swatch grid above. Less-frequent tools (highlighter, note, frame, hand)
+// remain in the "More tools" submenu below.
+//
+// Layout convention: most-used 3 in the top row, drawing/text in the
+// middle row, board/geo at the bottom. Tooltips via `title` carry the
+// label for keyboard / discovery / accessibility users.
+const QUICK_TOOLS_9 = [
+    { id: 'draw',          icon: 'tool-pencil',    label: 'Draw' },
+    { id: 'eraser',        icon: 'tool-eraser',    label: 'Erase' },
+    { id: 'select',        icon: 'tool-select',    label: 'Select' },
+    { id: 'text',          icon: 'tool-text',      label: 'Text' },
+    { id: 'arrow',         icon: 'tool-arrow',     label: 'Arrow' },
+    { id: 'line',          icon: 'tool-line',      label: 'Line' },
+    { id: 'laser',         icon: 'tool-laser',     label: 'Laser pointer' },
+    { id: 'geo:rectangle', icon: 'geo-rectangle',  label: 'Rectangle' },
+    { id: 'geo:ellipse',   icon: 'geo-ellipse',    label: 'Ellipse' },
 ]
 
 // Inline stylesheet for the quick-pick panel. Lives in the component so
@@ -221,65 +228,16 @@ const QUICKPICK_CSS = `
     outline-offset: 2px;
 }
 
-/* Primary tools: Draw / Erase / Select. Larger pills with icon + label.
-   All colors derived from currentColor — inherits from tldraw's menu
-   container, which is set per theme. Same CSS, both themes render. */
-.qp-tools-primary {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-    margin-bottom: 6px;
-}
-.qp-pill {
-    appearance: none;
-    padding: 7px 8px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: color-mix(in srgb, currentColor 6%, transparent);
-    color: inherit;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    font-family: inherit;
-    line-height: 1.2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    transition: background 0.08s ease-out, border-color 0.08s ease-out;
-}
-.qp-pill:hover {
-    background: color-mix(in srgb, currentColor 12%, transparent);
-    border-color: color-mix(in srgb, currentColor 10%, transparent);
-}
-.qp-pill:active {
-    background: color-mix(in srgb, currentColor 18%, transparent);
-}
-.qp-pill:focus-visible {
-    outline: 2px solid var(--color-selected, #3b82f6);
-    outline-offset: 1px;
-}
-.qp-pill .tlui-icon,
-.qp-pill svg {
-    width: 16px;
-    height: 16px;
-    flex: 0 0 auto;
-    color: inherit;
-    fill: currentColor;
-}
-.qp-pill-label {
-    flex: 0 1 auto;
-}
-
-/* Secondary tools: text / arrow / line / laser / rectangle / ellipse.
-   3-column grid of icon-only square buttons. Same theme-aware treatment. */
-.qp-tools-secondary {
+/* Tool grid: all 9 quick-pick tools share one icon-only square style.
+   3x3 layout, matching the swatch grid's symmetry and tldraw's own
+   toolbar idiom. Tooltips (title=) provide the label for discovery. */
+.qp-tools {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 4px;
     margin-bottom: 4px;
 }
-.qp-square {
+.qp-tool {
     appearance: none;
     aspect-ratio: 1 / 1;
     padding: 0;
@@ -293,19 +251,19 @@ const QUICKPICK_CSS = `
     justify-content: center;
     transition: background 0.08s ease-out, border-color 0.08s ease-out;
 }
-.qp-square:hover {
+.qp-tool:hover {
     background: color-mix(in srgb, currentColor 12%, transparent);
     border-color: color-mix(in srgb, currentColor 10%, transparent);
 }
-.qp-square:active {
+.qp-tool:active {
     background: color-mix(in srgb, currentColor 18%, transparent);
 }
-.qp-square:focus-visible {
+.qp-tool:focus-visible {
     outline: 2px solid var(--color-selected, #3b82f6);
     outline-offset: 1px;
 }
-.qp-square .tlui-icon,
-.qp-square svg {
+.qp-tool .tlui-icon,
+.qp-tool svg {
     width: 18px;
     height: 18px;
     color: inherit;
@@ -343,9 +301,9 @@ function QuickPickContextMenu(props) {
         [editor, closeMenu]
     )
 
-    // Secondary tool ids in SECONDARY_TOOLS may be 'geo:rectangle' style;
-    // split into (tool, info) for setCurrentTool's second-arg signature.
-    const dispatchSecondary = React.useCallback(
+    // Tool ids in QUICK_TOOLS_9 may be 'geo:rectangle' style; split into
+    // (tool, info) for setCurrentTool's second-arg signature.
+    const dispatchTool = React.useCallback(
         (id) => {
             if (id.startsWith('geo:')) {
                 pickTool('geo', { geo: id.slice(4) })
@@ -373,44 +331,15 @@ function QuickPickContextMenu(props) {
                         />
                     ))}
                 </div>
-                <div className="qp-tools-primary" role="group" aria-label="Quick tools">
-                    <button
-                        type="button"
-                        className="qp-pill"
-                        title="Draw (D)"
-                        onClick={() => pickTool('draw')}
-                    >
-                        <TldrawUiIcon icon="tool-pencil" small />
-                        <span className="qp-pill-label">Draw</span>
-                    </button>
-                    <button
-                        type="button"
-                        className="qp-pill"
-                        title="Eraser (E)"
-                        onClick={() => pickTool('eraser')}
-                    >
-                        <TldrawUiIcon icon="tool-eraser" small />
-                        <span className="qp-pill-label">Erase</span>
-                    </button>
-                    <button
-                        type="button"
-                        className="qp-pill"
-                        title="Select (V)"
-                        onClick={() => pickTool('select')}
-                    >
-                        <TldrawUiIcon icon="tool-select" small />
-                        <span className="qp-pill-label">Select</span>
-                    </button>
-                </div>
-                <div className="qp-tools-secondary" role="group" aria-label="More quick tools">
-                    {SECONDARY_TOOLS.map((tool) => (
+                <div className="qp-tools" role="group" aria-label="Quick tools">
+                    {QUICK_TOOLS_9.map((tool) => (
                         <button
                             key={tool.id}
                             type="button"
-                            className="qp-square"
+                            className="qp-tool"
                             title={tool.label}
                             aria-label={tool.label}
-                            onClick={() => dispatchSecondary(tool.id)}
+                            onClick={() => dispatchTool(tool.id)}
                         >
                             <TldrawUiIcon icon={tool.icon} />
                         </button>
