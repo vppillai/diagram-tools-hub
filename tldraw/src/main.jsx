@@ -45,6 +45,15 @@ const getWebSocketUrl = (roomId) => {
     return wsUrl
 }
 
+// tldraw v5 introduced a license check that logs a console warning and
+// shows a small corner watermark when no `licenseKey` prop is set. The
+// canvas still works without one. For an optional silenced experience,
+// drop a free WatermarkOnly key (https://tldraw.dev/community/license)
+// or a commercial key into TLDRAW_LICENSE_KEY in .env and rebuild —
+// Vite picks it up via the VITE_-prefixed build-time env var below.
+// Empty or unset → undefined, which is the same as omitting the prop.
+const TLDRAW_LICENSE_KEY = import.meta.env.VITE_TLDRAW_LICENSE_KEY || undefined
+
 // Generate room ID from URL path, return null if no room specified
 const getRoomId = () => {
     const path = window.location.pathname
@@ -890,6 +899,7 @@ function SyncTldraw({ roomId }) {
             <Tldraw
                 store={store}
                 user={user}
+                licenseKey={TLDRAW_LICENSE_KEY}
                 components={TLDRAW_COMPONENTS}
                 options={{
                     maxImageDimension: 5000,
@@ -946,6 +956,7 @@ function LocalTldraw() {
     return (
         <Tldraw
             store={store}
+            licenseKey={TLDRAW_LICENSE_KEY}
             components={TLDRAW_COMPONENTS}
             options={{
                 maxImageDimension: 5000,

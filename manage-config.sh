@@ -724,6 +724,8 @@ services:
     build:
       context: ./tldraw
       dockerfile: Dockerfile
+      args:
+        VITE_TLDRAW_LICENSE_KEY: \${TLDRAW_LICENSE_KEY:-}
     container_name: tldraw-app
     restart: unless-stopped
 
@@ -806,6 +808,8 @@ services:
     build:
       context: ./tldraw
       dockerfile: Dockerfile
+      args:
+        VITE_TLDRAW_LICENSE_KEY: \${TLDRAW_LICENSE_KEY:-}
     container_name: tldraw-app
     restart: unless-stopped
 
