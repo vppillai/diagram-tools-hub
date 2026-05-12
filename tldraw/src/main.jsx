@@ -16,6 +16,7 @@ import {
     getSnapshot,
     loadSnapshot,
     Tldraw,
+    TldrawUiIcon,
     TldrawUiMenuGroup,
     TldrawUiMenuItem,
     TldrawUiMenuSubmenu,
@@ -128,8 +129,12 @@ const multiplayerAssets = {
 // (white) stays available via tldraw's standard style panel — drawing white
 // on a white canvas isn't a primary use case.
 
+// 12 most-used colors as a 4×3 grid. Order matters: black sits in the last
+// cell because tldraw's default canvas background is white *but* dark theme
+// flips it, and "black-first" creates a visually-confusing dark spot in the
+// top-left swatch position. Reds and warm colors lead; black is the
+// fall-back not the headline.
 const QUICK_COLORS_12 = [
-    'black',
     'grey',
     'light-violet',
     'violet',
@@ -137,15 +142,16 @@ const QUICK_COLORS_12 = [
     'light-blue',
     'yellow',
     'orange',
+    'red',
+    'light-red',
     'green',
     'light-green',
-    'light-red',
-    'red',
+    'black',
 ]
 
-// Approximations of tldraw's default palette in light mode. Used to render
-// the visual swatch; the actual shape color comes from
-// editor.setStyleForNextShapes(DefaultColorStyle, color) and is theme-aware.
+// Approximations of tldraw's default palette. Used purely to render the
+// visual swatch; the *actual* stored shape color is the tldraw name token
+// (set via setStyleForNextShapes) and is theme-aware at render time.
 const QUICK_COLOR_HEX = {
     'black': '#1d1d1d',
     'grey': '#9ea6b0',
@@ -161,63 +167,140 @@ const QUICK_COLOR_HEX = {
     'red': '#e03131',
 }
 
+// Secondary tools grid — 6 tools laid out as 3 columns. Adds the most-used
+// drawing/board tools beyond Draw/Erase/Select, as icon-only square buttons.
+// Less-used tools (highlighter, note, frame, hand, etc.) stay in the
+// "More tools" submenu below.
+const SECONDARY_TOOLS = [
+    { id: 'text', icon: 'tool-text', label: 'Text' },
+    { id: 'arrow', icon: 'tool-arrow', label: 'Arrow' },
+    { id: 'line', icon: 'tool-line', label: 'Line' },
+    { id: 'laser', icon: 'tool-laser', label: 'Laser' },
+    { id: 'geo:rectangle', icon: 'geo-rectangle', label: 'Rectangle' },
+    { id: 'geo:ellipse', icon: 'geo-ellipse', label: 'Ellipse' },
+]
+
 // Inline stylesheet for the quick-pick panel. Lives in the component so
 // it's self-contained; React reconciles a single <style> tag across renders.
+//
+// Theme-awareness via color-mix(): mixes tldraw's --color-text (black in
+// light, white in dark) at low alpha with transparent. Same rule produces
+// a subtle darken in light mode and a subtle lighten in dark mode — no
+// hard-coded rgba values that fail in one of the themes.
 const QUICKPICK_CSS = `
 .qp-root {
-    padding: 8px 10px 6px;
-    min-width: 200px;
+    padding: 10px 10px 6px;
+    min-width: 220px;
 }
 .qp-swatches {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 .qp-swatch {
     aspect-ratio: 1 / 1;
     width: 100%;
     border-radius: 50%;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    border: 1px solid color-mix(in srgb, var(--color-text, #1d1d1d) 12%, transparent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     cursor: pointer;
     padding: 0;
-    transition: transform 0.08s ease-out;
+    transition: transform 0.08s ease-out, box-shadow 0.08s ease-out;
 }
 .qp-swatch:hover {
     transform: scale(1.12);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .qp-swatch:focus-visible {
-    outline: 2px solid #3b82f6;
-    outline-offset: 1px;
+    outline: 2px solid var(--color-selected, #3b82f6);
+    outline-offset: 2px;
 }
-.qp-tools {
-    display: flex;
+
+/* Primary tools: Draw / Erase / Select. Larger pills with icon + label.
+   Subtle styling that defers to tldraw's chrome; theme-aware hover via
+   color-mix instead of hard-coded rgba so dark mode renders sensibly. */
+.qp-tools-primary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 4px;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 .qp-pill {
-    flex: 1;
-    padding: 6px 8px;
-    border-radius: 6px;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    background: var(--color-panel, #ffffff);
+    appearance: none;
+    padding: 7px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--color-text, #1d1d1d) 4%, transparent);
     color: var(--color-text, #1d1d1d);
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
     font-family: inherit;
+    line-height: 1.2;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 6px;
+    transition: background 0.08s ease-out, border-color 0.08s ease-out;
 }
 .qp-pill:hover {
-    background: var(--color-hover, rgba(0, 0, 0, 0.04));
+    background: color-mix(in srgb, var(--color-text, #1d1d1d) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-text, #1d1d1d) 8%, transparent);
+}
+.qp-pill:active {
+    background: color-mix(in srgb, var(--color-text, #1d1d1d) 14%, transparent);
 }
 .qp-pill:focus-visible {
-    outline: 2px solid #3b82f6;
+    outline: 2px solid var(--color-selected, #3b82f6);
     outline-offset: 1px;
+}
+.qp-pill .tlui-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+.qp-pill-label {
+    flex: 0 1 auto;
+}
+
+/* Secondary tools: text / arrow / line / laser / rectangle / ellipse.
+   3-column grid of icon-only square buttons. Compact; same hover/focus
+   treatment as the primary pills. */
+.qp-tools-secondary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.qp-square {
+    appearance: none;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--color-text, #1d1d1d) 4%, transparent);
+    color: var(--color-text, #1d1d1d);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.08s ease-out, border-color 0.08s ease-out;
+}
+.qp-square:hover {
+    background: color-mix(in srgb, var(--color-text, #1d1d1d) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-text, #1d1d1d) 8%, transparent);
+}
+.qp-square:active {
+    background: color-mix(in srgb, var(--color-text, #1d1d1d) 14%, transparent);
+}
+.qp-square:focus-visible {
+    outline: 2px solid var(--color-selected, #3b82f6);
+    outline-offset: 1px;
+}
+.qp-square .tlui-icon {
+    width: 18px;
+    height: 18px;
 }
 `
 
@@ -251,6 +334,19 @@ function QuickPickContextMenu(props) {
         [editor, closeMenu]
     )
 
+    // Secondary tool ids in SECONDARY_TOOLS may be 'geo:rectangle' style;
+    // split into (tool, info) for setCurrentTool's second-arg signature.
+    const dispatchSecondary = React.useCallback(
+        (id) => {
+            if (id.startsWith('geo:')) {
+                pickTool('geo', { geo: id.slice(4) })
+            } else {
+                pickTool(id)
+            }
+        },
+        [pickTool]
+    )
+
     return (
         <DefaultContextMenu {...props}>
             <style>{QUICKPICK_CSS}</style>
@@ -268,14 +364,15 @@ function QuickPickContextMenu(props) {
                         />
                     ))}
                 </div>
-                <div className="qp-tools" role="group" aria-label="Quick tools">
+                <div className="qp-tools-primary" role="group" aria-label="Quick tools">
                     <button
                         type="button"
                         className="qp-pill"
                         title="Draw (D)"
                         onClick={() => pickTool('draw')}
                     >
-                        ✏️ Draw
+                        <TldrawUiIcon icon="tool-pencil" small />
+                        <span className="qp-pill-label">Draw</span>
                     </button>
                     <button
                         type="button"
@@ -283,7 +380,8 @@ function QuickPickContextMenu(props) {
                         title="Eraser (E)"
                         onClick={() => pickTool('eraser')}
                     >
-                        🧽 Erase
+                        <TldrawUiIcon icon="tool-eraser" small />
+                        <span className="qp-pill-label">Erase</span>
                     </button>
                     <button
                         type="button"
@@ -291,8 +389,23 @@ function QuickPickContextMenu(props) {
                         title="Select (V)"
                         onClick={() => pickTool('select')}
                     >
-                        ↖ Select
+                        <TldrawUiIcon icon="tool-select" small />
+                        <span className="qp-pill-label">Select</span>
                     </button>
+                </div>
+                <div className="qp-tools-secondary" role="group" aria-label="More quick tools">
+                    {SECONDARY_TOOLS.map((tool) => (
+                        <button
+                            key={tool.id}
+                            type="button"
+                            className="qp-square"
+                            title={tool.label}
+                            aria-label={tool.label}
+                            onClick={() => dispatchSecondary(tool.id)}
+                        >
+                            <TldrawUiIcon icon={tool.icon} />
+                        </button>
+                    ))}
                 </div>
             </div>
             <TldrawUiMenuGroup id="qp-more">
@@ -305,46 +418,11 @@ function QuickPickContextMenu(props) {
                         onSelect={() => editor.setCurrentTool('highlight')}
                     />
                     <TldrawUiMenuItem
-                        id="qp-tool-text"
-                        label="Text"
-                        icon="tool-text"
-                        readonlyOk
-                        onSelect={() => editor.setCurrentTool('text')}
-                    />
-                    <TldrawUiMenuItem
                         id="qp-tool-note"
                         label="Sticky note"
                         icon="tool-note"
                         readonlyOk
                         onSelect={() => editor.setCurrentTool('note')}
-                    />
-                    <TldrawUiMenuItem
-                        id="qp-tool-arrow"
-                        label="Arrow"
-                        icon="tool-arrow"
-                        readonlyOk
-                        onSelect={() => editor.setCurrentTool('arrow')}
-                    />
-                    <TldrawUiMenuItem
-                        id="qp-tool-line"
-                        label="Line"
-                        icon="tool-line"
-                        readonlyOk
-                        onSelect={() => editor.setCurrentTool('line')}
-                    />
-                    <TldrawUiMenuItem
-                        id="qp-tool-geo-rectangle"
-                        label="Rectangle"
-                        icon="geo-rectangle"
-                        readonlyOk
-                        onSelect={() => editor.setCurrentTool('geo', { geo: 'rectangle' })}
-                    />
-                    <TldrawUiMenuItem
-                        id="qp-tool-geo-ellipse"
-                        label="Ellipse"
-                        icon="geo-ellipse"
-                        readonlyOk
-                        onSelect={() => editor.setCurrentTool('geo', { geo: 'ellipse' })}
                     />
                     <TldrawUiMenuItem
                         id="qp-tool-frame"
@@ -359,13 +437,6 @@ function QuickPickContextMenu(props) {
                         icon="tool-hand"
                         readonlyOk
                         onSelect={() => editor.setCurrentTool('hand')}
-                    />
-                    <TldrawUiMenuItem
-                        id="qp-tool-laser"
-                        label="Laser pointer"
-                        icon="tool-laser"
-                        readonlyOk
-                        onSelect={() => editor.setCurrentTool('laser')}
                     />
                 </TldrawUiMenuSubmenu>
             </TldrawUiMenuGroup>
@@ -730,11 +801,16 @@ function SyncTldraw({ roomId }) {
                 onMount={(editor) => {
                     editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
                     // External asset handler registered for URL unfurling
-                    
+
                     if (typeof window !== 'undefined') {
                         window.editor = editor
                     }
-                    
+
+                    // Default to the draw (pen) tool on page load — matches
+                    // the vppillai/whiteboard mental model where the canvas
+                    // is for drawing first; selection is a secondary mode.
+                    editor.setCurrentTool('draw')
+
                     // Set default zoom to 75%
                     setTimeout(() => {
                         try {
@@ -975,6 +1051,10 @@ function LocalTldraw({ roomId }) {
                         window.editor = editor
                     }
 
+                    // Default to the draw (pen) tool on page load — matches
+                    // the vppillai/whiteboard mental model.
+                    editor.setCurrentTool('draw')
+
                     // Set default zoom to 75%
                     setTimeout(() => {
                         try {
@@ -984,7 +1064,7 @@ function LocalTldraw({ roomId }) {
                             console.log('Could not set initial zoom level')
                         }
                     }, 100)
-                    
+
                     // Tool change handling for default styles
                     let currentTool = editor.getCurrentToolId()
                     const stylePrefs = getStylePreferences()
