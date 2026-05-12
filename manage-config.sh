@@ -562,147 +562,64 @@ http_only() {
     log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
 }
 
-# Generate only nginx configuration for CI builds (bypasses docker-compose validation)
-generate_nginx_config() {
-    log_info "Generating HTTP-only nginx configuration for CI build..."
-    
-    # Ensure engine directory exists
+# Render the engine nginx config from engine/nginx.conf.template. One source
+# of truth for HTTP, HTTPS, and CI modes — the previous three inline heredocs
+# in this file had drifted (CI's /tldraw/sync/ vs HTTPS's /tldraw-sync/),
+# which is exactly the drift this template prevents.
+#
+# Usage: render_nginx_config <mode>   where <mode> is http | https
+render_nginx_config() {
+    local mode="${1:-http}"
+    local template="./engine/nginx.conf.template"
+    local out="./engine/nginx.conf"
+
+    if [ ! -f "$template" ]; then
+        log_error "Nginx template missing: $template"
+        return 1
+    fi
+
+    if ! command -v envsubst >/dev/null 2>&1; then
+        log_error "envsubst is required to render the nginx template."
+        log_error "Install: apt-get install gettext-base  (Debian/Ubuntu)"
+        log_error "         apk add gettext               (Alpine)"
+        log_error "         brew install gettext          (macOS)"
+        return 1
+    fi
+
     mkdir -p ./engine
-    
-    # Create HTTP-only nginx configuration
-    local nginx_conf="./engine/nginx.conf"
-    cat > "$nginx_conf" << 'EOF'
-events {
-    worker_connections 1024;
+
+    # envsubst expands only the listed vars — nginx's own $host etc. pass
+    # through unchanged. Each block is a heredoc (no command substitution).
+    case "$mode" in
+        https)
+            export LISTEN_DIRECTIVE="listen 443 ssl http2;"
+            export SSL_PROTOCOLS_BLOCK=$'\n    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256;\n    ssl_prefer_server_ciphers off;\n    ssl_session_cache shared:SSL:10m;\n    ssl_session_timeout 10m;\n'
+            export SSL_CERT_BLOCK=$'\n        ssl_certificate /etc/ssl/certs/cert.pem;\n        ssl_certificate_key /etc/ssl/private/key.pem;'
+            export SECURITY_HEADERS=$'\n        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;\n        add_header X-Content-Type-Options nosniff always;\n        add_header X-XSS-Protection "1; mode=block" always;\n        add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n'
+            ;;
+        http|ci)
+            export LISTEN_DIRECTIVE="listen 80;"
+            export SSL_PROTOCOLS_BLOCK=""
+            export SSL_CERT_BLOCK=""
+            export SECURITY_HEADERS=""
+            ;;
+        *)
+            log_error "Unknown nginx render mode: $mode"
+            return 1
+            ;;
+    esac
+
+    envsubst '${LISTEN_DIRECTIVE} ${SSL_PROTOCOLS_BLOCK} ${SSL_CERT_BLOCK} ${SECURITY_HEADERS}' \
+        < "$template" > "$out"
+
+    unset LISTEN_DIRECTIVE SSL_PROTOCOLS_BLOCK SSL_CERT_BLOCK SECURITY_HEADERS
 }
 
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    upstream drawio_backend {
-        server drawio:8080;
-    }
-
-    upstream excalidraw_backend {
-        server excalidraw:80;
-    }
-
-    upstream tldraw_backend {
-        server tldraw:3000;
-    }
-
-    upstream tldraw_sync_backend {
-        server tldraw-sync:3001;
-    }
-
-    upstream whiteboard_backend {
-        server whiteboard:8787;
-    }
-
-    server {
-        listen 80;
-        server_name localhost;
-
-        # Main landing page
-        location / {
-            root /usr/share/nginx/html;
-            index index.html;
-        }
-
-        # Draw.io reverse proxy
-        location /drawio {
-            return 301 /drawio/;
-        }
-
-        # Draw.io embed-specific handling (more permissive for embedding)
-        location /drawio/embed/ {
-            proxy_pass http://drawio_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # More permissive framing for embed mode
-            add_header X-Frame-Options "" always;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        location /drawio/ {
-            proxy_pass http://drawio_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Excalidraw reverse proxy
-        location /excalidraw {
-            return 301 /excalidraw/;
-        }
-
-        location /excalidraw/ {
-            proxy_pass http://excalidraw_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # TLDraw reverse proxy
-        location /tldraw {
-            return 301 /tldraw/;
-        }
-
-        location /tldraw/ {
-            proxy_pass http://tldraw_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # TLDraw WebSocket sync proxy
-        location /tldraw/sync/ {
-            proxy_pass http://tldraw_sync_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Whiteboard reverse proxy (vppillai/whiteboard, submodule pinned to v1.0.0)
-        # Stateless static SPA; nginx strips the /whiteboard/ prefix on proxy_pass.
-        location /whiteboard {
-            return 301 /whiteboard/;
-        }
-
-        location /whiteboard/ {
-            proxy_pass http://whiteboard_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Health check endpoint
-        location /health {
-            access_log off;
-            return 200 "healthy\n";
-            add_header Content-Type text/plain;
-        }
-    }
-}
-EOF
-    
+# Generate nginx configuration for CI builds. Renders the HTTP variant —
+# no SSL certs required, no docker-compose validation needed.
+generate_nginx_config() {
+    log_info "Generating HTTP nginx configuration for CI build..."
+    render_nginx_config http
     log_success "nginx.conf generated successfully for CI build!"
 }
 
@@ -727,211 +644,11 @@ cleanup_containers() {
 
 create_https_nginx_config() {
     local nginx_conf="./engine/nginx.conf"
-    
-    # Backup original configuration only if it exists
     if [ -f "$nginx_conf" ] && [ ! -f "$nginx_conf.backup" ]; then
         cp "$nginx_conf" "$nginx_conf.backup"
         log_info "Backed up original nginx configuration"
     fi
-    
-    # Create HTTPS nginx configuration
-    cat > "$nginx_conf" << 'EOF'
-events {
-    worker_connections 1024;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    # SSL Configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256;
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-
-    upstream drawio_backend {
-        server drawio:8080;
-    }
-
-    upstream excalidraw_backend {
-        server excalidraw:80;
-    }
-
-    upstream tldraw_backend {
-        server tldraw:3000;
-    }
-
-    upstream tldraw_sync_backend {
-        server tldraw-sync:3001;
-    }
-
-    upstream whiteboard_backend {
-        server whiteboard:8787;
-    }
-
-    # HTTPS server
-    server {
-        listen 443 ssl http2;
-        server_name _;
-
-        # SSL certificates
-        ssl_certificate /etc/ssl/certs/cert.pem;
-        ssl_certificate_key /etc/ssl/private/key.pem;
-
-        # Security headers
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header X-Content-Type-Options nosniff always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-        # Main landing page
-        location / {
-            root /usr/share/nginx/html;
-            index index.html;
-        }
-
-        # Draw.io reverse proxy
-        location /drawio {
-            return 301 /drawio/;
-        }
-
-        # Draw.io embed-specific handling (more permissive for embedding)
-        location /drawio/embed/ {
-            proxy_pass http://drawio_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # More permissive framing for embed mode
-            add_header X-Frame-Options "" always;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        location /drawio/ {
-            proxy_pass http://drawio_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # Allow embedding for Draw.io (override global X-Frame-Options)
-            add_header X-Frame-Options SAMEORIGIN always;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Excalidraw reverse proxy
-        location /excalidraw {
-            return 301 /excalidraw/;
-        }
-
-        location /excalidraw/ {
-            proxy_pass http://excalidraw_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Handle Excalidraw assets that are requested from root (not under /tldraw)
-        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest|sw\.js) {
-            proxy_pass http://excalidraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # TLDraw reverse proxy - handle both /tldraw/ and /tldraw/room-name
-        location /tldraw {
-            return 301 /tldraw/;
-        }
-
-        # Handle TLDraw production assets (static files need path rewriting)
-        location ~ ^/tldraw/assets/.*\.(js|css)$ {
-            rewrite ^/tldraw(.*)$ $1 break;
-            proxy_pass http://tldraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Handle all other TLDraw requests (dev server needs full path)
-        location /tldraw/ {
-            proxy_pass http://tldraw_backend/tldraw/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # WebSocket support (for Vite dev server)
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # TLDraw Sync reverse proxy for all endpoints
-        location /tldraw-sync/ {
-            # Rewrite /tldraw-sync/ to / for the backend
-            rewrite ^/tldraw-sync/(.*)$ /$1 break;
-            proxy_pass http://tldraw_sync_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Whiteboard reverse proxy (vppillai/whiteboard, submodule pinned to v1.0.0)
-        # Stateless static SPA; nginx strips the /whiteboard/ prefix on proxy_pass.
-        location /whiteboard {
-            return 301 /whiteboard/;
-        }
-
-        location /whiteboard/ {
-            proxy_pass http://whiteboard_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Handle favicon.ico requests
-        location = /favicon.ico {
-            return 204;
-            add_header Content-Type image/x-icon;
-        }
-
-        # Health check endpoint
-        location /health {
-            return 200 "OK\n";
-            add_header Content-Type text/plain;
-        }
-        
-    }
-}
-EOF
-
+    render_nginx_config https
     log_info "Created HTTPS nginx configuration"
 }
 
@@ -1021,187 +738,7 @@ EOF
 }
 
 create_http_only_config() {
-    local nginx_conf="./engine/nginx.conf"
-    
-    # Create HTTP-only nginx configuration (fallback to original design)
-    cat > "$nginx_conf" << 'EOF'
-events {
-    worker_connections 1024;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    upstream drawio_backend {
-        server drawio:8080;
-    }
-
-    upstream excalidraw_backend {
-        server excalidraw:80;
-    }
-
-    upstream tldraw_backend {
-        server tldraw:3000;
-    }
-
-    upstream tldraw_sync_backend {
-        server tldraw-sync:3001;
-    }
-
-    upstream whiteboard_backend {
-        server whiteboard:8787;
-    }
-
-    server {
-        listen 80;
-        server_name localhost;
-
-        # Main landing page
-        location / {
-            root /usr/share/nginx/html;
-            index index.html;
-        }
-
-        # Draw.io reverse proxy
-        location /drawio {
-            return 301 /drawio/;
-        }
-
-        # Draw.io embed-specific handling (more permissive for embedding)
-        location /drawio/embed/ {
-            proxy_pass http://drawio_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # More permissive framing for embed mode
-            add_header X-Frame-Options "" always;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        location /drawio/ {
-            proxy_pass http://drawio_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # Allow embedding for Draw.io (override global X-Frame-Options)
-            add_header X-Frame-Options SAMEORIGIN always;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Excalidraw reverse proxy
-        location /excalidraw {
-            return 301 /excalidraw/;
-        }
-
-        location /excalidraw/ {
-            proxy_pass http://excalidraw_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Handle Excalidraw assets that are requested from root (not under /tldraw)
-        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest|sw\.js) {
-            proxy_pass http://excalidraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # TLDraw reverse proxy - handle both /tldraw/ and /tldraw/room-name
-        location /tldraw {
-            return 301 /tldraw/;
-        }
-
-        # Handle TLDraw production assets (static files need path rewriting)
-        location ~ ^/tldraw/assets/.*\.(js|css)$ {
-            rewrite ^/tldraw(.*)$ $1 break;
-            proxy_pass http://tldraw_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Handle all other TLDraw requests (dev server needs full path)
-        location /tldraw/ {
-            proxy_pass http://tldraw_backend/tldraw/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # WebSocket support (for Vite dev server)
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # TLDraw Sync reverse proxy for all endpoints
-        location /tldraw-sync/ {
-            # Rewrite /tldraw-sync/ to / for the backend
-            rewrite ^/tldraw-sync/(.*)$ /$1 break;
-            proxy_pass http://tldraw_sync_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-
-            # WebSocket support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-
-        # Whiteboard reverse proxy (vppillai/whiteboard, submodule pinned to v1.0.0)
-        # Stateless static SPA; nginx strips the /whiteboard/ prefix on proxy_pass.
-        location /whiteboard {
-            return 301 /whiteboard/;
-        }
-
-        location /whiteboard/ {
-            proxy_pass http://whiteboard_backend/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Handle favicon.ico requests
-        location = /favicon.ico {
-            return 204;
-            add_header Content-Type image/x-icon;
-        }
-
-        # Health check endpoint
-        location /health {
-            return 200 "OK\n";
-            add_header Content-Type text/plain;
-        }
-    }
-}
-EOF
-
+    render_nginx_config http
     log_info "Created HTTP-only nginx configuration"
 }
 
@@ -1403,35 +940,44 @@ fi
 install_service() {
     local service_file="drawapp.service"
     local systemd_dir="/etc/systemd/system"
-    local current_dir=$(pwd)
-    local current_user=$(whoami)
-    
+    local current_dir
+    current_dir=$(pwd)
+
     log_info "Installing DrawApp systemd service..."
-    
-    # Check if running as root or with sudo
+
     if [ "$EUID" -ne 0 ]; then
         log_error "Service installation requires root privileges. Please run with sudo."
         echo "Usage: sudo $0 install-service"
         exit 1
     fi
-    
-    # Check if service file exists
+
     if [ ! -f "$service_file" ]; then
         log_error "Service file not found: $service_file"
         exit 1
     fi
-    
-    # Update service file with current paths
-    log_info "Updating service file with current paths..."
-    sed -i "s|WorkingDirectory=.*|WorkingDirectory=$current_dir|g" "$service_file"
-    sed -i "s|ExecStart=.*|ExecStart=$current_dir/manage-config.sh start|g" "$service_file"
-    sed -i "s|ExecStop=.*|ExecStop=$current_dir/manage-config.sh stop|g" "$service_file"
-    sed -i "s|ExecReload=.*|ExecReload=$current_dir/manage-config.sh restart|g" "$service_file"
-    sed -i "s|ReadWritePaths=.*|ReadWritePaths=$current_dir|g" "$service_file"
-    
-    # Copy service file to systemd directory
+
+    # Render into a temp file before substituting paths. The previous
+    # version sed'd the tracked file in-place — every install showed up
+    # as a `git diff` and the next `git checkout` would silently revert
+    # the systemd unit's paths back to the /path/to/drawApp placeholder.
+    local rendered
+    rendered=$(mktemp /tmp/drawapp.service.XXXXXX) || {
+        log_error "mktemp failed"
+        exit 1
+    }
+    trap 'rm -f "$rendered"' EXIT
+
+    log_info "Rendering service file with current paths..."
+    sed \
+        -e "s|WorkingDirectory=.*|WorkingDirectory=$current_dir|g" \
+        -e "s|ExecStart=.*|ExecStart=$current_dir/manage-config.sh start|g" \
+        -e "s|ExecStop=.*|ExecStop=$current_dir/manage-config.sh stop|g" \
+        -e "s|ExecReload=.*|ExecReload=$current_dir/manage-config.sh restart|g" \
+        -e "s|ReadWritePaths=.*|ReadWritePaths=$current_dir|g" \
+        "$service_file" > "$rendered"
+
     log_info "Copying service file to $systemd_dir..."
-    cp "$service_file" "$systemd_dir/"
+    cp "$rendered" "$systemd_dir/$service_file"
     chmod 644 "$systemd_dir/$service_file"
     
     # Reload systemd and enable service
