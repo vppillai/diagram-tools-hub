@@ -9,6 +9,29 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-05-12
+
+Single-fix patch closing a release-upgrade trap surfaced by a user
+upgrading v1.4.0 → v1.4.1.
+
+### Fixed
+
+- **`manage-config.sh rebuild <service>` now picks up template
+  changes after a release upgrade.** Both `docker-compose.yml` and
+  `engine/nginx.conf` are gitignored artifacts of the script's
+  in-file templates. The previous `ensure_configs_exist` ran
+  `if [ ! -f … ]; then create_…`, which left stale files in place
+  whenever the upgrade-from version had already bootstrapped them.
+  Concrete repro: v1.4.1's compose template added a
+  `VITE_TLDRAW_LICENSE_KEY` build arg under the tldraw service;
+  `./manage-config.sh rebuild tldraw` against an upgraded checkout
+  rebuilt the image against the stale v1.4.0 compose file, the new
+  build arg never reached docker build, and the license key in
+  `.env` never made it into the bundle. `ensure_configs_exist`
+  now always regenerates from templates, and all three rebuild
+  paths (`rebuild_services` single-service, `rebuild_dev_services`
+  single-service, `rebuild_only`) call it before building.
+
 ## [1.4.1] — 2026-05-12
 
 Post-v1.4.0 follow-up: a fictional action version pin had broken the
@@ -224,6 +247,7 @@ key as an env var so non-localhost deployments are unblocked.
 
 ---
 
-[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.2
 [1.4.1]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.1
 [1.4.0]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.0
