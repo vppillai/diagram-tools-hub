@@ -301,20 +301,48 @@ function QuickPickContextMenu(props) {
         }
     }, [])
 
+    // The Escape keydown dispatched by closeMenu() is seen by both Radix
+    // (closes the menu — what we want) AND tldraw's document-level key
+    // handler (which can cancel the current tool back to 'select' — what
+    // we don't want). For color picks the user expects the current tool
+    // to persist; for tool picks the user expects the just-selected tool
+    // to persist. Both wrap a save-and-restore around closeMenu so the
+    // Escape side-effect doesn't leak.
+    //
+    // queueMicrotask runs after the synchronous Escape handlers complete
+    // but before the next paint, so the restore happens in the same frame.
+    const restoreToolIfChanged = React.useCallback(
+        (expectedTool, info) => {
+            queueMicrotask(() => {
+                try {
+                    if (editor.getCurrentToolId() !== expectedTool) {
+                        editor.setCurrentTool(expectedTool, info)
+                    }
+                } catch (err) {
+                    console.warn('Failed to restore tool after menu close:', err)
+                }
+            })
+        },
+        [editor]
+    )
+
     const pickColor = React.useCallback(
         (color) => {
+            const toolBefore = editor.getCurrentToolId()
             editor.setStyleForNextShapes(DefaultColorStyle, color)
             closeMenu()
+            restoreToolIfChanged(toolBefore)
         },
-        [editor, closeMenu]
+        [editor, closeMenu, restoreToolIfChanged]
     )
 
     const pickTool = React.useCallback(
         (tool, info) => {
             editor.setCurrentTool(tool, info)
             closeMenu()
+            restoreToolIfChanged(tool, info)
         },
-        [editor, closeMenu]
+        [editor, closeMenu, restoreToolIfChanged]
     )
 
     // Tool ids prefixed 'geo:' map to geo-shape variants. The geo tool's
