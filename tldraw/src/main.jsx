@@ -813,6 +813,18 @@ function SyncTldraw({ roomId }) {
                     // is for drawing first; selection is a secondary mode.
                     editor.setCurrentTool('draw')
 
+                    // Lock the tool so it doesn't auto-revert to 'select'
+                    // after each shape/text creation. The user can still
+                    // toggle this off via tldraw's toolbar lock button
+                    // mid-session. Default-on matches the whiteboard mental
+                    // model and the user's "tool and color should be
+                    // independently sticky" requirement.
+                    try {
+                        editor.updateInstanceState({ isToolLocked: true })
+                    } catch (err) {
+                        console.warn('Failed to set isToolLocked:', err)
+                    }
+
                     // Default opacity 100% for next shapes. tldraw v5's
                     // setOpacityForNextShapes lives on the editor; some
                     // users land with sub-100% opacity persisted from a
@@ -1069,6 +1081,14 @@ function LocalTldraw({ roomId }) {
                     // Default to the draw (pen) tool on page load — matches
                     // the vppillai/whiteboard mental model.
                     editor.setCurrentTool('draw')
+
+                    // Lock the tool so it doesn't auto-revert to 'select'
+                    // after each shape/text creation.
+                    try {
+                        editor.updateInstanceState({ isToolLocked: true })
+                    } catch (err) {
+                        console.warn('Failed to set isToolLocked:', err)
+                    }
 
                     // Default opacity 100% for next shapes.
                     try {
