@@ -48,6 +48,10 @@ tldraw-sync-backend/.assets/
 # TLDraw frontend build artifacts
 tldraw/node_modules/
 tldraw/dist/
+# We standardize on npm for tldraw (package-lock.json). A stray bun.lock from
+# a local `bun install` shouldn't be checked in.
+tldraw/bun.lock
+tldraw/bun.lockb
 
 # Git worktrees for isolated feature work
 .worktrees/

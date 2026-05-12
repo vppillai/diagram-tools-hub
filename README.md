@@ -301,10 +301,11 @@ cd tldraw-sync-backend && npm start     # Production mode
 
 ### Service Structure
 - **Engine** (Nginx) - Reverse proxy, SSL termination, and landing page server
-- **Draw.io** - Professional diagramming tool (port 8081 → `/drawio/`)
-- **Excalidraw** - Hand-drawn diagrams (port 8082 → `/excalidraw/`)  
-- **TLDraw** - Collaborative canvas (port 8083 → `/tldraw/`)
-- **TLDraw Sync** - WebSocket collaboration backend (port 3001, internal)
+- **Draw.io** - Professional diagramming tool (`/drawio/`)
+- **Excalidraw** - Hand-drawn diagrams (`/excalidraw/`)
+- **TLDraw** - Collaborative canvas (`/tldraw/`)
+- **TLDraw Sync** - WebSocket collaboration backend (internal-only, exposed via `/tldraw-sync/`)
+- **Whiteboard** - Low-latency pen-optimized canvas (`/whiteboard/`, submodule)
 
 ### Network Architecture
 - Shared Docker network: `diagram-tools-network`
@@ -315,13 +316,14 @@ cd tldraw-sync-backend && npm start     # Production mode
 ### Technology Stack
 
 **Frontend Technologies:**
-- **TLDraw**: React 18 + Vite 5 + @tldraw/tldraw ^2.0.0 + @tldraw/sync ^2.0.0
+- **TLDraw**: React 19 + Vite 8 + @tldraw/tldraw ^5.0.0 + @tldraw/sync ^5.0.0
 - **Draw.io**: Official jgraph/drawio Docker image
 - **Excalidraw**: Official excalidraw/excalidraw Docker image
+- **Whiteboard**: vppillai/whiteboard (submodule), Bun + custom canvas engine
 - **Nginx**: Alpine-based reverse proxy with HTTPS termination
 
 **Backend Technologies:**
-- **TLDraw Sync**: Node.js 20 + @tldraw/sync-core ^2.0.0 + WebSocket (ws ^8.18.0)
+- **TLDraw Sync**: Node.js 22 + @tldraw/sync-core ^5.0.0 + WebSocket (ws ^8.20.0)
 - **URL Unfurling**: unfurl.js ^6.4.0 for bookmark previews
 - **File Storage**: Persistent volumes for rooms (.rooms) and assets (.assets)
 
@@ -448,12 +450,25 @@ Found a bug or have an idea? Open an issue or submit a PR!
 - **Updates**: Keep the system updated by pulling latest releases regularly
 - **Room Cleanup**: Old rooms and assets are automatically cleaned up (configurable retention periods)
 
+> ⚠️ **LAN-only deployment**
+> The TLDraw sync backend (`/tldraw-sync/` + WebSocket) has **no
+> authentication**. Anyone who can reach the hub on the network can
+> open any room name, read its contents, and upload assets. v1.4.0 ships
+> with path-traversal and SSRF guards plus per-upload size limits, but
+> the authorization layer is deferred. Do not expose this stack to the
+> public internet without putting an authenticating reverse proxy
+> (Cloudflare Access, Tailscale, basic auth in nginx, …) in front of it.
+> Tracking auth as a follow-up for v1.5.0.
+
 ## Releases
 
-Docker images are automatically built and published:
+Per-service Docker images are built and published to GHCR on each tagged
+release. Note the namespace uses `-` as a separator (not `/`); there is no
+`engine` image — nginx is the upstream `nginx:alpine`.
+
 ```bash
-docker pull ghcr.io/vppillai/diagram-tools-hub/tldraw:latest
-docker pull ghcr.io/vppillai/diagram-tools-hub/engine:latest
+docker pull ghcr.io/vppillai/diagram-tools-hub-tldraw:latest
+docker pull ghcr.io/vppillai/diagram-tools-hub-whiteboard:latest
 ```
 
 ## License

