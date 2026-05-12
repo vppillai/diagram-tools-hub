@@ -280,6 +280,14 @@ rebuild_services() {
     
     if [ -n "$service" ]; then
         ensure_submodules
+        # Regenerate docker-compose.yml (and nginx.conf) from the script's
+        # templates BEFORE the build, even on single-service rebuilds.
+        # docker-compose.yml is gitignored / generated, so a user who has
+        # upgraded across a release whose template changed (e.g. a new
+        # build arg was added to a service definition) would otherwise
+        # rebuild against the stale on-disk compose file and never pick
+        # up the new template content.
+        ensure_configs_exist
         log_info "Rebuilding and restarting $service service..."
         sudo docker compose build --no-cache "$service"
         sudo docker compose up -d "$service"
@@ -322,6 +330,9 @@ rebuild_dev_services() {
     
     if [ -n "$service" ]; then
         ensure_submodules
+        # Regenerate the compose file before single-service dev rebuild
+        # — same reasoning as `rebuild_services`. See the comment there.
+        ensure_configs_exist
         log_info "Rebuilding and restarting $service service in development mode..."
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache "$service"
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d "$service"
@@ -370,6 +381,10 @@ rebuild_only() {
         exit 1
     fi
     
+    # Regenerate the compose file before building — see rebuild_services
+    # for why. Without this, `rebuild-only` against an upgraded checkout
+    # silently builds against a stale compose template.
+    ensure_configs_exist
     log_info "Rebuilding $service service without restarting..."
     sudo docker compose build --no-cache "$service"
     log_success "$service service rebuilt successfully! Use 'restart $service' to apply changes."
@@ -846,28 +861,27 @@ EOF
 }
 
 ensure_configs_exist() {
-    log_info "Ensuring all configuration files exist..."
-    
-    # Check if nginx.conf exists
-    if [ ! -f "./engine/nginx.conf" ]; then
-        log_info "nginx.conf not found, creating configuration..."
-        if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
-            create_https_nginx_config
-        else
-            create_http_only_config
-        fi
+    # Always regenerate the generated configs from the in-script templates.
+    # docker-compose.yml and engine/nginx.conf are both gitignored — they
+    # are pure artifacts of `manage-config.sh`'s templates. The previous
+    # version of this function ran `if [ ! -f ... ]; then create_…` which
+    # left stale files in place after an upgrade. Specifically: a user
+    # upgrading v1.4.0 → v1.4.1 hit this — v1.4.1 added a build arg to the
+    # tldraw service in the template, but `rebuild` reused the v1.4.0
+    # compose file on disk and the new arg never reached docker build.
+    # Always regenerating fixes the class of problem.
+    log_info "Regenerating engine/nginx.conf and docker-compose.yml from templates..."
+
+    if [ -f "./certs/cert.pem" ] && [ -f "./certs/key.pem" ]; then
+        create_https_nginx_config
+        update_docker_compose_https
+    else
+        create_http_only_config
+        create_http_only_docker_compose
     fi
-    
-    # Check if docker-compose.yml exists or needs regeneration
-    if [ ! -f "./docker-compose.yml" ]; then
-        log_error "docker-compose.yml not found. This file should exist in the project."
-        exit 1
-    fi
-    
-    # Ensure environment variables are used in compose file
+
     ensure_env_variables_in_compose
-    
-    log_info "Configuration files validated."
+    log_info "Configuration files regenerated."
 }
 
 ensure_env_variables_in_compose() {
