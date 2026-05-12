@@ -18,6 +18,7 @@ import {
     Tldraw,
     TldrawUiMenuGroup,
     TldrawUiMenuItem,
+    TldrawUiMenuSubmenu,
     UserRecordType,
     uniqueId,
     useEditor,
@@ -114,11 +115,20 @@ const multiplayerAssets = {
     },
 }
 
-// Custom right-click context menu — adds quick-pick tool pills (Draw / Eraser /
-// Select) and the 13 default color swatches above tldraw's standard cut/
-// copy/delete/etc. operations. Lets pen-on-Intuos users avoid going to the
-// corner of the screen for tool + color switches.
-const QUICK_COLORS = [
+// Custom right-click context menu — visual quick-pick. Pattern mirrors
+// vppillai/whiteboard's right-click: color swatches as a 4×3 grid at the
+// TOP of the menu (the most-frequent action), tool pills directly below
+// (Draw / Eraser / Select), then a "More tools…" submenu for the long-tail
+// tools, then tldraw's default cut/copy/paste/delete items.
+//
+// Pen-on-Intuos workflow: side-button right-click → tap a swatch or pill →
+// done. Replaces "go to the corner of the toolbar" with "tap at cursor".
+//
+// 12 most-used colors are surfaced as visual swatches (4×3 grid); the 13th
+// (white) stays available via tldraw's standard style panel — drawing white
+// on a white canvas isn't a primary use case.
+
+const QUICK_COLORS_12 = [
     'black',
     'grey',
     'light-violet',
@@ -131,46 +141,233 @@ const QUICK_COLORS = [
     'light-green',
     'light-red',
     'red',
-    'white',
 ]
+
+// Approximations of tldraw's default palette in light mode. Used to render
+// the visual swatch; the actual shape color comes from
+// editor.setStyleForNextShapes(DefaultColorStyle, color) and is theme-aware.
+const QUICK_COLOR_HEX = {
+    'black': '#1d1d1d',
+    'grey': '#9ea6b0',
+    'light-violet': '#e085f4',
+    'violet': '#ae3ec9',
+    'blue': '#4263eb',
+    'light-blue': '#4dabf7',
+    'yellow': '#f1ac4b',
+    'orange': '#f76707',
+    'green': '#41a755',
+    'light-green': '#4cb05e',
+    'light-red': '#f87171',
+    'red': '#e03131',
+}
+
+// Inline stylesheet for the quick-pick panel. Lives in the component so
+// it's self-contained; React reconciles a single <style> tag across renders.
+const QUICKPICK_CSS = `
+.qp-root {
+    padding: 8px 10px 6px;
+    min-width: 200px;
+}
+.qp-swatches {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.qp-swatch {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.08s ease-out;
+}
+.qp-swatch:hover {
+    transform: scale(1.12);
+}
+.qp-swatch:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+.qp-tools {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.qp-pill {
+    flex: 1;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: var(--color-panel, #ffffff);
+    color: var(--color-text, #1d1d1d);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+.qp-pill:hover {
+    background: var(--color-hover, rgba(0, 0, 0, 0.04));
+}
+.qp-pill:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+`
 
 function QuickPickContextMenu(props) {
     const editor = useEditor()
+
+    // Plain <button> elements aren't Radix menu items, so they don't auto-close
+    // the context menu on click. Radix listens for Escape to close — dispatch
+    // a keydown to body so the menu collapses after a quick-pick action.
+    const closeMenu = React.useCallback(() => {
+        try {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        } catch {
+            // Some test runners (jsdom) reject KeyboardEvent construction; ignore.
+        }
+    }, [])
+
+    const pickColor = React.useCallback(
+        (color) => {
+            editor.setStyleForNextShapes(DefaultColorStyle, color)
+            closeMenu()
+        },
+        [editor, closeMenu]
+    )
+
+    const pickTool = React.useCallback(
+        (tool, info) => {
+            editor.setCurrentTool(tool, info)
+            closeMenu()
+        },
+        [editor, closeMenu]
+    )
+
     return (
         <DefaultContextMenu {...props}>
-            <TldrawUiMenuGroup id="quick-tools">
-                <TldrawUiMenuItem
-                    id="qp-tool-draw"
-                    label="Draw"
-                    icon="tool-pencil"
-                    readonlyOk
-                    onSelect={() => editor.setCurrentTool('draw')}
-                />
-                <TldrawUiMenuItem
-                    id="qp-tool-eraser"
-                    label="Eraser"
-                    icon="tool-eraser"
-                    readonlyOk
-                    onSelect={() => editor.setCurrentTool('eraser')}
-                />
-                <TldrawUiMenuItem
-                    id="qp-tool-select"
-                    label="Select"
-                    icon="tool-select"
-                    readonlyOk
-                    onSelect={() => editor.setCurrentTool('select')}
-                />
-            </TldrawUiMenuGroup>
-            <TldrawUiMenuGroup id="quick-colors">
-                {QUICK_COLORS.map((color) => (
+            <style>{QUICKPICK_CSS}</style>
+            <div className="qp-root" onPointerDown={(e) => e.stopPropagation()}>
+                <div className="qp-swatches" role="group" aria-label="Quick colors">
+                    {QUICK_COLORS_12.map((color) => (
+                        <button
+                            key={color}
+                            type="button"
+                            className="qp-swatch"
+                            style={{ background: QUICK_COLOR_HEX[color] }}
+                            title={color}
+                            aria-label={`Color ${color}`}
+                            onClick={() => pickColor(color)}
+                        />
+                    ))}
+                </div>
+                <div className="qp-tools" role="group" aria-label="Quick tools">
+                    <button
+                        type="button"
+                        className="qp-pill"
+                        title="Draw (D)"
+                        onClick={() => pickTool('draw')}
+                    >
+                        ✏️ Draw
+                    </button>
+                    <button
+                        type="button"
+                        className="qp-pill"
+                        title="Eraser (E)"
+                        onClick={() => pickTool('eraser')}
+                    >
+                        🧽 Erase
+                    </button>
+                    <button
+                        type="button"
+                        className="qp-pill"
+                        title="Select (V)"
+                        onClick={() => pickTool('select')}
+                    >
+                        ↖ Select
+                    </button>
+                </div>
+            </div>
+            <TldrawUiMenuGroup id="qp-more">
+                <TldrawUiMenuSubmenu id="qp-more-tools" label="More tools">
                     <TldrawUiMenuItem
-                        key={color}
-                        id={`qp-color-${color}`}
-                        label={color}
+                        id="qp-tool-highlight"
+                        label="Highlighter"
+                        icon="tool-highlight"
                         readonlyOk
-                        onSelect={() => editor.setStyleForNextShapes(DefaultColorStyle, color)}
+                        onSelect={() => editor.setCurrentTool('highlight')}
                     />
-                ))}
+                    <TldrawUiMenuItem
+                        id="qp-tool-text"
+                        label="Text"
+                        icon="tool-text"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('text')}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-note"
+                        label="Sticky note"
+                        icon="tool-note"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('note')}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-arrow"
+                        label="Arrow"
+                        icon="tool-arrow"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('arrow')}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-line"
+                        label="Line"
+                        icon="tool-line"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('line')}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-geo-rectangle"
+                        label="Rectangle"
+                        icon="geo-rectangle"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('geo', { geo: 'rectangle' })}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-geo-ellipse"
+                        label="Ellipse"
+                        icon="geo-ellipse"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('geo', { geo: 'ellipse' })}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-frame"
+                        label="Frame"
+                        icon="tool-frame"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('frame')}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-hand"
+                        label="Hand (pan)"
+                        icon="tool-hand"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('hand')}
+                    />
+                    <TldrawUiMenuItem
+                        id="qp-tool-laser"
+                        label="Laser pointer"
+                        icon="tool-laser"
+                        readonlyOk
+                        onSelect={() => editor.setCurrentTool('laser')}
+                    />
+                </TldrawUiMenuSubmenu>
             </TldrawUiMenuGroup>
             <DefaultContextMenuContent />
         </DefaultContextMenu>
