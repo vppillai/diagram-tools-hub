@@ -428,13 +428,37 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
         const id = decodeURIComponent(url.pathname.slice('/uploads/'.length))
         const data = await loadAsset(id)
-        
+
         if (data) {
             res.writeHead(200)
             res.end(data)
         } else {
             res.writeHead(404)
             res.end('Not found')
+        }
+        return
+    }
+
+    // Asset delete (called by client's TLAssetStore.remove when shapes
+    // referencing the asset are deleted). Event-driven cleanup augmenting
+    // the periodic sweep. Idempotent — missing file is fine.
+    if (req.method === 'DELETE' && url.pathname.startsWith('/uploads/')) {
+        const id = decodeURIComponent(url.pathname.slice('/uploads/'.length))
+        try {
+            await unlink(join(ASSETS_DIR, id))
+            console.log(`Asset deleted on client request: ${id}`)
+            res.writeHead(204)
+            res.end()
+        } catch (err) {
+            if (err && err.code === 'ENOENT') {
+                // Already gone — idempotent success
+                res.writeHead(204)
+                res.end()
+            } else {
+                console.error(`Asset DELETE failed for ${id}:`, err)
+                res.writeHead(500)
+                res.end('Delete failed')
+            }
         }
         return
     }

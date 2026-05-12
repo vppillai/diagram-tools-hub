@@ -6,17 +6,24 @@ import {
     atom,
     computed,
     createUserId,
+    DefaultColorStyle,
+    DefaultFontStyle,
+    DefaultSizeStyle,
+    defaultShapeUtils,
+    createTLStore,
+    getDefaultUserPresence,
     getHashForString,
     getSnapshot,
     loadSnapshot,
     Tldraw,
+    TldrawUiMenuGroup,
+    TldrawUiMenuItem,
     UserRecordType,
     uniqueId,
+    useEditor,
     useTldrawCurrentUser,
-    createTLStore,
-    defaultShapeUtils,
-    DefaultSizeStyle,
-    DefaultFontStyle,
+    DefaultContextMenu,
+    DefaultContextMenuContent,
 } from 'tldraw'
 import 'tldraw/tldraw.css'
 
@@ -53,7 +60,12 @@ const getRoomId = () => {
     return null
 }
 
-// Asset store implementation
+// Asset store implementation (TLAssetStore).
+// v5: upload returns { src, meta? }, not bare URL.
+// v5: optional remove(assetIds) fires when shapes referencing the asset are
+// deleted. We look up each asset in the editor store, pull its URL, and call
+// DELETE on the upload endpoint. Event-driven cleanup augments the server's
+// periodic sweep.
 const multiplayerAssets = {
     async upload(_asset, file) {
         const id = uniqueId()
@@ -70,7 +82,6 @@ const multiplayerAssets = {
                 throw new Error(`Failed to upload asset: ${response.statusText}`)
             }
 
-            // tldraw v5: TLAssetStore.upload must return { src, meta? }, not bare URL.
             return { src: url }
         } catch (error) {
             console.error('Asset upload failed:', error)
@@ -80,7 +91,93 @@ const multiplayerAssets = {
     resolve(asset) {
         return asset.props.src
     },
+    // v5 TLAssetStore.remove — fired when shapes are deleted. Best-effort
+    // cleanup: looks up each asset in the live editor store, extracts the
+    // upload URL, and fires DELETE. Failures are logged, not surfaced —
+    // the server's periodic cleanup catches anything missed.
+    async remove(assetIds) {
+        const editor = typeof window !== 'undefined' ? window.editor : null
+        if (!editor) return
+        for (const id of assetIds) {
+            try {
+                const asset = editor.store.get(id)
+                const src = asset?.props?.src
+                if (src && src.includes('/tldraw-sync/uploads/')) {
+                    fetch(src, { method: 'DELETE' }).catch((err) => {
+                        console.warn(`Asset cleanup DELETE failed for ${id}:`, err)
+                    })
+                }
+            } catch (err) {
+                console.warn(`Asset cleanup lookup failed for ${id}:`, err)
+            }
+        }
+    },
 }
+
+// Custom right-click context menu — adds quick-pick tool pills (Draw / Eraser /
+// Select) and the 13 default color swatches above tldraw's standard cut/
+// copy/delete/etc. operations. Lets pen-on-Intuos users avoid going to the
+// corner of the screen for tool + color switches.
+const QUICK_COLORS = [
+    'black',
+    'grey',
+    'light-violet',
+    'violet',
+    'blue',
+    'light-blue',
+    'yellow',
+    'orange',
+    'green',
+    'light-green',
+    'light-red',
+    'red',
+    'white',
+]
+
+function QuickPickContextMenu(props) {
+    const editor = useEditor()
+    return (
+        <DefaultContextMenu {...props}>
+            <TldrawUiMenuGroup id="quick-tools">
+                <TldrawUiMenuItem
+                    id="qp-tool-draw"
+                    label="Draw"
+                    icon="tool-pencil"
+                    readonlyOk
+                    onSelect={() => editor.setCurrentTool('draw')}
+                />
+                <TldrawUiMenuItem
+                    id="qp-tool-eraser"
+                    label="Eraser"
+                    icon="tool-eraser"
+                    readonlyOk
+                    onSelect={() => editor.setCurrentTool('eraser')}
+                />
+                <TldrawUiMenuItem
+                    id="qp-tool-select"
+                    label="Select"
+                    icon="tool-select"
+                    readonlyOk
+                    onSelect={() => editor.setCurrentTool('select')}
+                />
+            </TldrawUiMenuGroup>
+            <TldrawUiMenuGroup id="quick-colors">
+                {QUICK_COLORS.map((color) => (
+                    <TldrawUiMenuItem
+                        key={color}
+                        id={`qp-color-${color}`}
+                        label={color}
+                        readonlyOk
+                        onSelect={() => editor.setStyleForNextShapes(DefaultColorStyle, color)}
+                    />
+                ))}
+            </TldrawUiMenuGroup>
+            <DefaultContextMenuContent />
+        </DefaultContextMenu>
+    )
+}
+
+const TLDRAW_COMPONENTS = { ContextMenu: QuickPickContextMenu }
 
 // Shared color configuration for keyboard shortcuts
 const COLOR_SHORTCUTS = {
@@ -352,10 +449,26 @@ function SyncTldraw({ roomId }) {
         }),
     }), [prefsAtom])
 
+    // Bridge isTabActive React state into a ref so getUserPresence below can
+    // read the current value without re-rendering useSync on every flip.
+    const isTabActiveRef = React.useRef(isTabActive)
+    React.useEffect(() => { isTabActiveRef.current = isTabActive }, [isTabActive])
+
     const store = useSync({
         uri: wsUrl,
         assets: multiplayerAssets,
         users,
+        // v5: restores the isTabActive peer broadcast that v2's userInfo carried.
+        // Spreads the default presence (cursor, color, name) and adds isTabActive
+        // in meta so peers can render a "💤" indicator on idle tabs.
+        getUserPresence: (s, u) => {
+            const base = getDefaultUserPresence(s, u)
+            if (!base) return null
+            return {
+                ...base,
+                meta: { ...(base.meta ?? {}), isTabActive: isTabActiveRef.current },
+            }
+        },
     })
 
     // Simple debounced name update - only update state after delay
@@ -411,6 +524,7 @@ function SyncTldraw({ roomId }) {
             <Tldraw
                 store={store}
                 user={user}
+                components={TLDRAW_COMPONENTS}
                 options={{
                     maxImageDimension: 5000,
                     maxAssetSize: 10 * 1024 * 1024, // 10mb
@@ -653,6 +767,7 @@ function LocalTldraw({ roomId }) {
         <>
             <Tldraw
                 store={store}
+                components={TLDRAW_COMPONENTS}
                 options={{
                     maxImageDimension: 5000,
                     maxAssetSize: 10 * 1024 * 1024, // 10mb
