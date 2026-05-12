@@ -25,6 +25,10 @@ For commit-level detail, see the auto-generated body of each
   is set on mount so the tool you pick from the quick-pick stays active
   after each shape/text commit, instead of auto-reverting to "select".
   Still toggleable via the tldraw toolbar pin mid-session.
+- **Per-tool style defaults and persistence.** Draw/highlight default to
+  size `'s'`; text/note default to size `'m'` and font `'mono'`. When
+  you change a font or size from the style panel, the new value sticks
+  across tool switches and across page reloads (localStorage).
 - **TLAssetStore.remove** — when a shape referencing an uploaded asset is
   deleted, the client now fires `DELETE /tldraw-sync/uploads/<id>`. Asset
   cleanup is event-driven; the server's periodic sweep is the safety net.
@@ -141,6 +145,12 @@ For commit-level detail, see the auto-generated body of each
 - **Dead App scaffolding** — the 50 ms LocalTldraw→SyncTldraw handoff
   (mount Local for one frame, throw it away when isReady flips) is gone.
   SyncTldraw now mounts immediately when a `roomId` is present.
+- **Reactive tool-change handler was reading the wrong field.** The
+  current tool ID lives on the editor's state machine (`editor.root`),
+  not on the `instance` record — the previous handler checked
+  `next.currentToolId` which was always undefined, so per-tool
+  preferences (font for text/note, size for draw/highlight) only got
+  applied on initial mount, never on later tool switches.
 
 ### Removed
 
@@ -160,11 +170,11 @@ For commit-level detail, see the auto-generated body of each
 
 > ⚠️ **No authentication on the sync backend.** Anyone who can reach
 > `/tldraw-sync/` on the network can open any room, read its contents,
-> and upload assets. v1.4.0 ships with path-traversal + SSRF + size-limit
-> guards but the authorization layer is deferred to v1.5.0. Do not
+> and upload assets. Path-traversal, SSRF, and per-upload size limits
+> are enforced, but the authorization layer is not implemented. Do not
 > expose this stack to the public internet without an authenticating
 > reverse proxy (Cloudflare Access, Tailscale, basic auth in nginx, …)
-> in front of it.
+> in front of it. Auth is on the roadmap.
 
 ---
 
