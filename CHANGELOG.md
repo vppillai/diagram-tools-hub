@@ -9,6 +9,22 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.4.3] — 2026-05-12
+
+Submodule bump only — picks up whiteboard `v1.0.0` → `v1.1.0` so the bundled `/whiteboard/` instance gains image paste / move / resize / rotate and the dedicated Select tool. DTH proper is unchanged: same services, same networking, same env contract.
+
+### Changed
+
+- **Whiteboard submodule bumped to [v1.1.0](https://github.com/vppillai/whiteboard/releases/tag/v1.1.0).** Users of the bundled `/whiteboard/` instance now have:
+  - **Image paste / drag-drop** — `Ctrl/Cmd + V` clipboard or drag-drop a PNG / JPEG / WebP / GIF onto the canvas.
+  - **Select tool (`V`)** with move / resize (Shift = aspect-lock) / rotate (double-click handle resets to 0°) / delete.
+  - **PNG / SVG / PDF exports** include images in z-order with rotation preserved.
+  - **`Cmd/Ctrl+A`** now batch-marks images for delete alongside strokes.
+  - **Export filename gains seconds** so back-to-back exports within the same minute don't collide.
+
+  Storage upgrades in place — IDB schema bumps to v2 with two new object stores (`images` + `images-blob`); existing stroke data is preserved. Existing v1.4.x DTH users have nothing to migrate on the DTH side; the upgrade happens transparently in the user's browser on first visit to `/whiteboard/` after pulling the new container.
+- **`manage-config.sh`** in-file compose template: the inline `# pinned at v1.0.0` comment next to the whiteboard service is now `# pinned at v1.1.0`. Cosmetic only — the submodule SHA recorded by `git submodule status` is the load-bearing reference; the generated `docker-compose.yml` is gitignored and regenerated from this template on the next `manage-config.sh` invocation.
+
 ## [1.4.2] — 2026-05-12
 
 Single-fix patch closing a release-upgrade trap surfaced by a user
