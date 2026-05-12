@@ -449,40 +449,29 @@ function QuickPickContextMenu(props) {
 
 const TLDRAW_COMPONENTS = { ContextMenu: QuickPickContextMenu }
 
-// Shared color configuration for keyboard shortcuts
-const COLOR_SHORTCUTS = {
-    colorMap: {
-        '1': 'black',
-        '2': 'grey', 
-        '3': 'green',
-        '4': 'yellow',
-        '5': 'red',
-        '6': 'blue',
-        '7': 'orange', 
-        '8': 'indigo',
-        '9': 'violet'
-    },
-    colorRgbMap: {
-        'red': 'rgb(224, 51, 51)',
-        'blue': 'rgb(51, 102, 204)', 
-        'green': 'rgb(68, 170, 68)',
-        'yellow': 'rgb(255, 193, 61)',
-        'orange': 'rgb(255, 127, 0)',
-        'indigo': 'rgb(68, 90, 158)',
-        'violet': 'rgb(142, 68, 173)',
-        'grey': 'rgb(153, 153, 153)',
-        'black': 'rgb(0, 0, 0)',
-        // Alternative color names
-        'light-blue': 'rgb(68, 90, 158)',
-        'purple': 'rgb(142, 68, 173)',
-        'gray': 'rgb(153, 153, 153)'
-    },
-    // Alternative names TLDraw might use
-    colorAliases: {
-        'indigo': ['purple', 'light-blue', 'navy', 'dark-blue'],
-        'violet': ['purple', 'magenta', 'pink'],
-        'grey': ['gray']
-    }
+// Number-key shortcuts mapped to valid v5 DefaultColorStyle tokens.
+// '8' was 'indigo' before — that isn't a real tldraw token, so the keypress
+// silently no-op'd; 'light-violet' is the closest valid value.
+const COLOR_HOTKEYS = {
+    '1': 'black',
+    '2': 'grey',
+    '3': 'green',
+    '4': 'yellow',
+    '5': 'red',
+    '6': 'blue',
+    '7': 'orange',
+    '8': 'light-violet',
+    '9': 'violet',
+}
+
+// Sync status → status-pill emoji. Field is `store.status` (v5), not the
+// legacy `store.connectionStatus` which doesn't exist on the sync store.
+const SYNC_STATUS_BADGE = {
+    'synced-remote': '🟢',
+    'synced-local': '🟡',
+    'error': '🔴',
+    'loading': '⚪',
+    'not-connected': '⚪',
 }
 
 // Style preferences management
@@ -505,6 +494,119 @@ function saveStylePreference(toolId, styleProp, value) {
         localStorage.setItem(STYLE_PREFS_KEY, JSON.stringify(prefs))
     } catch (e) {
         console.warn('Failed to save style preference:', e)
+    }
+}
+
+const STORAGE_KEY_LOCAL = 'tldraw-local-document'
+
+// Common editor wiring shared by SyncTldraw and LocalTldraw. Replaces ~140
+// lines of duplicated onMount body that had drifted between the two — fixes
+// already happened in one copy but not the other (e.g. the LocalTldraw
+// store.listen leak). Returns a cleanup that releases all timers / listeners.
+//
+// Replaces three v1.3 anti-patterns:
+//   - 100 ms setInterval polling for tool changes → sideEffects handler
+//   - 60-line `findColorButton` DOM-scrape on every color hotkey → direct
+//     editor.setStyleForNextShapes call
+//   - Each call to `applyToolPreferences` reads style prefs fresh, so manual
+//     changes via the style panel are picked up without remount.
+function setupCanvasDefaults(editor) {
+    if (typeof window !== 'undefined') {
+        window.editor = editor
+    }
+
+    // Pen-first canvas: draw is the default; selection is secondary.
+    editor.setCurrentTool('draw')
+
+    // Tool stays locked across shape/text creation — without this tldraw
+    // auto-reverts to 'select' after each commit. The tldraw toolbar pin
+    // can still toggle this off mid-session.
+    try {
+        editor.updateInstanceState({ isToolLocked: true })
+    } catch (err) {
+        console.warn('Failed to set isToolLocked:', err)
+    }
+
+    try {
+        editor.setOpacityForNextShapes?.(1)
+    } catch {
+        // older/future versions may not have this method.
+    }
+
+    // Camera isn't synchronously ready on first mount in some sync paths,
+    // so the 75% zoom is deferred a frame. Cleanup clears the timer.
+    const zoomTimer = setTimeout(() => {
+        try {
+            const camera = editor.getCamera()
+            editor.setCamera({ ...camera, z: 0.75 })
+        } catch {
+            // Camera replaced by sync handoff; safe to ignore.
+        }
+    }, 100)
+
+    const applyToolPreferences = (toolId) => {
+        const prefs = getStylePreferences()[toolId]
+        if (toolId === 'draw' || toolId === 'highlight') {
+            const size = prefs?.size ?? 's'
+            editor.setStyleForNextShapes(DefaultSizeStyle, size)
+            if (!prefs?.size) saveStylePreference(toolId, 'size', size)
+        }
+        if (toolId === 'text' || toolId === 'note') {
+            const font = prefs?.font ?? 'mono'
+            editor.setStyleForNextShapes(DefaultFontStyle, font)
+            if (!prefs?.font) saveStylePreference(toolId, 'font', font)
+        }
+    }
+    applyToolPreferences(editor.getCurrentToolId())
+
+    // Reactive tool/style tracking — replaces the v1.3 100 ms setInterval.
+    let lastTool = editor.getCurrentToolId()
+    const removeInstanceHandler = editor.sideEffects.registerAfterChangeHandler(
+        'instance',
+        (_prev, next) => {
+            if (next.currentToolId !== lastTool) {
+                lastTool = next.currentToolId
+                applyToolPreferences(lastTool)
+            }
+            const styles = next.stylesForNextShape || {}
+            if (lastTool === 'draw' || lastTool === 'highlight') {
+                const size = styles[DefaultSizeStyle.id]
+                if (size) saveStylePreference(lastTool, 'size', size)
+            }
+            if (lastTool === 'text' || lastTool === 'note') {
+                const font = styles[DefaultFontStyle.id]
+                if (font) saveStylePreference(lastTool, 'font', font)
+            }
+        },
+    )
+
+    // 1-9 → next-shape color. Direct API call — no DOM scraping.
+    const handleKeydown = (e) => {
+        if (
+            e.target.tagName === 'INPUT' ||
+            e.target.tagName === 'TEXTAREA' ||
+            e.target.isContentEditable ||
+            e.ctrlKey || e.metaKey || e.altKey
+        ) {
+            return
+        }
+        const color = COLOR_HOTKEYS[e.key]
+        if (!color) return
+        e.preventDefault()
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+        try {
+            editor.setStyleForNextShapes(DefaultColorStyle, color)
+        } catch (err) {
+            console.warn('Failed to apply color hotkey:', err)
+        }
+    }
+    document.addEventListener('keydown', handleKeydown, true)
+
+    return () => {
+        clearTimeout(zoomTimer)
+        removeInstanceHandler()
+        document.removeEventListener('keydown', handleKeydown, true)
     }
 }
 
@@ -542,35 +644,9 @@ async function unfurlBookmarkUrl({ url }) {
 
 export default function App() {
     const roomId = getRoomId()
-    const [isReady, setIsReady] = React.useState(false)
-    
-    // Always render TLDraw immediately, but defer sync connection
-    React.useEffect(() => {
-        // Short delay to let initial render complete
-        const timer = setTimeout(() => {
-            setIsReady(true)
-        }, 50)
-        return () => clearTimeout(timer)
-    }, [])
-
-    if (roomId) {
-        // Room-based collaborative mode
-        if (!isReady) {
-            // Loading with local store for faster startup
-        } else {
-            // Ready to establish sync connection
-        }
-    } else {
-        // Standalone mode - no synchronization
-    }
-
     return (
         <div style={{ position: 'fixed', inset: 0 }}>
-            {roomId && isReady ? (
-                <SyncTldraw roomId={roomId} />
-            ) : (
-                <LocalTldraw roomId={roomId} />
-            )}
+            {roomId ? <SyncTldraw roomId={roomId} /> : <LocalTldraw />}
         </div>
     )
 }
@@ -701,7 +777,6 @@ function SyncTldraw({ roomId }) {
     // Create sync store. tldraw v5: `userInfo` and `pingUrl` are gone.
     // Identity for presence/attribution comes from `users` (a TLUserStore).
     const wsUrl = getWebSocketUrl(roomId)
-    console.log('TLDraw sync connecting to:', wsUrl)
 
     // Bridge React userPreferences state into a tldraw reactive atom so the
     // TLUserStore's `currentUser` signal recomputes when name/color change.
@@ -741,19 +816,20 @@ function SyncTldraw({ roomId }) {
         },
     })
 
-    // Simple debounced name update - only update state after delay
-    const debouncedNameUpdate = React.useCallback(
-        React.useMemo(() => {
-            let timeoutId
-            return (newName) => {
-                clearTimeout(timeoutId)
-                timeoutId = setTimeout(() => {
-                    setUserPreferences(prev => ({ ...prev, name: newName }))
-                }, 800) // Shorter delay for better responsiveness
-            }
-        }, []),
-        []
-    )
+    // Debounced name update — coalesces per-character edits to one state
+    // update after 800 ms of inactivity. useMemo+empty deps captures
+    // `timeoutId` in one stable closure; setUserPreferences is React-stable
+    // so no deps are needed. (Was useCallback(useMemo()) — recreated the
+    // closure on every render, so the debounce never actually debounced.)
+    const debouncedNameUpdate = React.useMemo(() => {
+        let timeoutId
+        return (newName) => {
+            clearTimeout(timeoutId)
+            timeoutId = setTimeout(() => {
+                setUserPreferences(prev => ({ ...prev, name: newName }))
+            }, 800)
+        }
+    }, [])
     
     // Create user object for Tldraw component with simple debounced name updates.
     // v5: useTldrawUser was removed; useTldrawCurrentUser takes the same shape
@@ -802,216 +878,7 @@ function SyncTldraw({ roomId }) {
                 colorScheme={userPreferences?.colorScheme ?? 'system'}
                 onMount={(editor) => {
                     editor.registerExternalAssetHandler('url', unfurlBookmarkUrl)
-                    // External asset handler registered for URL unfurling
-
-                    if (typeof window !== 'undefined') {
-                        window.editor = editor
-                    }
-
-                    // Default to the draw (pen) tool on page load — matches
-                    // the vppillai/whiteboard mental model where the canvas
-                    // is for drawing first; selection is a secondary mode.
-                    editor.setCurrentTool('draw')
-
-                    // Lock the tool so it doesn't auto-revert to 'select'
-                    // after each shape/text creation. The user can still
-                    // toggle this off via tldraw's toolbar lock button
-                    // mid-session. Default-on matches the whiteboard mental
-                    // model and the user's "tool and color should be
-                    // independently sticky" requirement.
-                    try {
-                        editor.updateInstanceState({ isToolLocked: true })
-                    } catch (err) {
-                        console.warn('Failed to set isToolLocked:', err)
-                    }
-
-                    // Default opacity 100% for next shapes. tldraw v5's
-                    // setOpacityForNextShapes lives on the editor; some
-                    // users land with sub-100% opacity persisted from a
-                    // previous session. Explicit set on mount is harmless
-                    // if the default is already 1.0.
-                    try {
-                        if (typeof editor.setOpacityForNextShapes === 'function') {
-                            editor.setOpacityForNextShapes(1)
-                        }
-                    } catch {
-                        // Older or future versions may not have this method.
-                    }
-
-                    // Set default zoom to 75%
-                    setTimeout(() => {
-                        try {
-                            const camera = editor.getCamera()
-                            editor.setCamera({ ...camera, z: 0.75 })
-                        } catch (error) {
-                            console.log('Could not set initial zoom level')
-                        }
-                    }, 100)
-                    
-                    // Tool change handling for default styles
-                    let currentTool = editor.getCurrentToolId()
-                    const stylePrefs = getStylePreferences()
-                    
-                    // Apply saved preferences for the current tool
-                    const applyToolPreferences = (toolId) => {
-                        const prefs = stylePrefs[toolId]
-                        if (prefs) {
-                            if (prefs.size && (toolId === 'draw' || toolId === 'highlight')) {
-                                editor.setStyleForNextShapes(DefaultSizeStyle, prefs.size)
-                            }
-                            if (prefs.font && (toolId === 'text' || toolId === 'note')) {
-                                editor.setStyleForNextShapes(DefaultFontStyle, prefs.font)
-                            }
-                        } else {
-                            // Set defaults for first time
-                            if (toolId === 'draw' || toolId === 'highlight') {
-                                editor.setStyleForNextShapes(DefaultSizeStyle, 's')
-                                saveStylePreference(toolId, 'size', 's')
-                            }
-                            if (toolId === 'text' || toolId === 'note') {
-                                editor.setStyleForNextShapes(DefaultFontStyle, 'mono')
-                                saveStylePreference(toolId, 'font', 'mono')
-                            }
-                        }
-                    }
-                    
-                    // Monitor tool changes
-                    const checkToolChange = () => {
-                        const newTool = editor.getCurrentToolId()
-                        if (newTool !== currentTool) {
-                            currentTool = newTool
-                            applyToolPreferences(newTool)
-                        }
-                    }
-                    
-                    // Initial application
-                    applyToolPreferences(currentTool)
-                    
-                    // Check for tool changes periodically
-                    const toolCheckInterval = setInterval(checkToolChange, 100)
-                    
-                    // Listen for style changes to save preferences
-                    editor.sideEffects.registerAfterChangeHandler('instance', () => {
-                        const toolId = editor.getCurrentToolId()
-                        const instanceState = editor.getInstanceState()
-                        if (toolId === 'draw' || toolId === 'highlight') {
-                            const currentSize = instanceState.stylesForNextShape[DefaultSizeStyle.id]
-                            if (currentSize) {
-                                saveStylePreference(toolId, 'size', currentSize)
-                            }
-                        }
-                        if (toolId === 'text' || toolId === 'note') {
-                            const currentFont = instanceState.stylesForNextShape[DefaultFontStyle.id]
-                            if (currentFont) {
-                                saveStylePreference(toolId, 'font', currentFont)
-                            }
-                        }
-                    })
-                    
-                    // Use shared color configuration
-                    const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
-                    
-                    const findColorButton = (color) => {
-                        // Get all possible names for this color
-                        const colorNames = [color, ...(colorAliases[color] || [])]
-                        
-                        
-                        // Priority 1: Direct color button selectors
-                        for (const colorName of colorNames) {
-                            const directSelectors = [
-                                `[data-testid="style.color.${colorName}"]`,
-                                `[data-testid*="color"][data-testid*="${colorName}"]`,
-                                `[aria-label*="color ${colorName}"]`,
-                                `[aria-label*="${colorName}"]`,
-                                `[title*="${colorName}"]`
-                            ]
-                            
-                            for (const selector of directSelectors) {
-                                const button = document.querySelector(selector)
-                                if (button) {
-                                    return button
-                                }
-                            }
-                        }
-                        
-                        // Priority 2: Style panel buttons with matching background color
-                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button, [data-testid*="color"] button')
-                        
-                        // Try multiple RGB values for this color
-                        const possibleRgbValues = [
-                            colorRgbMap[color],
-                            ...colorNames.map(name => colorRgbMap[name]).filter(Boolean)
-                        ]
-                        
-                        for (const targetRgb of possibleRgbValues) {
-                            if (targetRgb) {
-                                for (const button of styleButtons) {
-                                    const bgColor = window.getComputedStyle(button).backgroundColor
-                                    if (bgColor === targetRgb) {
-                                        return button
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Priority 3: Broader search by color name in attributes
-                        const allButtons = document.querySelectorAll('button, [role="button"]')
-                        for (const colorName of colorNames) {
-                            for (const button of allButtons) {
-                                const testId = button.getAttribute('data-testid') || ''
-                                const ariaLabel = button.getAttribute('aria-label') || ''
-                                const title = button.getAttribute('title') || ''
-                                
-                                if (testId.includes(colorName) || ariaLabel.toLowerCase().includes(colorName) || title.toLowerCase().includes(colorName)) {
-                                    // Make sure it's likely a color button
-                                    if (testId.includes('color') || ariaLabel.includes('color') || title.includes('color') || 
-                                        button.closest('[data-testid*="color"], .tl-style-panel')) {
-                                        return button
-                                    }
-                                }
-                            }
-                        }
-                        
-                        return null
-                    }
-                    
-                    const handleKeydown = (e) => {
-                        // Skip if typing in input fields or using modifiers
-                        if (e.target.tagName === 'INPUT' || 
-                            e.target.tagName === 'TEXTAREA' || 
-                            e.target.isContentEditable ||
-                            e.ctrlKey || e.metaKey || e.altKey) {
-                            return
-                        }
-                        
-                        const color = colorMap[e.key]
-                        if (!color) return // Let TLDraw handle non-color keys (like Delete, Arrow keys, etc.)
-                        
-                        
-                        // Only block TLDraw from processing color shortcut keys
-                        e.preventDefault()
-                        e.stopPropagation()
-                        e.stopImmediatePropagation()
-                        
-                        // Use requestAnimationFrame for better performance than setTimeout
-                        requestAnimationFrame(() => {
-                            const button = findColorButton(color)
-                            if (button) {
-                                button.click()
-                            }
-                        })
-                        
-                        return false
-                    }
-                    
-                    // Add event listener with capture phase to intercept before TLDraw
-                    document.addEventListener('keydown', handleKeydown, true)
-                    
-                    // Cleanup function to remove event listener and interval
-                    return () => {
-                        document.removeEventListener('keydown', handleKeydown, true)
-                        clearInterval(toolCheckInterval)
-                    }
+                    return setupCanvasDefaults(editor)
                 }}
             />
             
@@ -1039,11 +906,7 @@ function SyncTldraw({ roomId }) {
                 }}>
                     ({userPreferences.name}{!isTabActive ? ' 💤' : ''})
                 </span>
-                <span>
-                    {store?.connectionStatus === 'online' ? '🟢' : 
-                     store?.connectionStatus === 'offline' ? '🔴' : 
-                     store?.status === 'loading' ? '🟡' : '⚪'}
-                </span>
+                <span>{SYNC_STATUS_BADGE[store?.status] ?? '⚪'}</span>
                 {!isTabActive && <span title="Tab is inactive">📱</span>}
             </div>
             
@@ -1052,284 +915,60 @@ function SyncTldraw({ roomId }) {
     )
 }
 
-// Component for local-only TLDraw with persistence
-function LocalTldraw({ roomId }) {
-    const STORAGE_KEY = 'tldraw-local-document'
-    
-    // Use a simple store without complex persistence setup
-    const store = React.useMemo(() => {
-        return createTLStore({
-            shapeUtils: defaultShapeUtils,
-        })
-    }, [])
+// Local-only canvas with localStorage persistence. Used when no room is
+// in the URL; collaborative path is SyncTldraw.
+function LocalTldraw() {
+    const store = React.useMemo(
+        () => createTLStore({ shapeUtils: defaultShapeUtils }),
+        [],
+    )
 
     return (
-        <>
-            <Tldraw
-                store={store}
-                components={TLDRAW_COMPONENTS}
-                options={{
-                    maxImageDimension: 5000,
-                    maxAssetSize: 10 * 1024 * 1024, // 10mb
-                }}
-                colorScheme="system"
-                onMount={(editor) => {
-                    if (typeof window !== 'undefined') {
-                        window.editor = editor
+        <Tldraw
+            store={store}
+            components={TLDRAW_COMPONENTS}
+            options={{
+                maxImageDimension: 5000,
+                maxAssetSize: 10 * 1024 * 1024, // 10mb
+            }}
+            colorScheme="system"
+            onMount={(editor) => {
+                const cleanupDefaults = setupCanvasDefaults(editor)
+
+                // Restore persisted state BEFORE attaching the save listener.
+                // Doing it the other way around (the v1.3 ordering) opens a
+                // window where a tldraw-internal store change can fire the
+                // save listener with the blank initial store, clobbering the
+                // user's saved canvas.
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY_LOCAL)
+                    if (saved) {
+                        loadSnapshot(editor.store, JSON.parse(saved))
                     }
+                } catch (error) {
+                    console.warn('Failed to load saved document:', error)
+                }
 
-                    // Default to the draw (pen) tool on page load — matches
-                    // the vppillai/whiteboard mental model.
-                    editor.setCurrentTool('draw')
-
-                    // Lock the tool so it doesn't auto-revert to 'select'
-                    // after each shape/text creation.
-                    try {
-                        editor.updateInstanceState({ isToolLocked: true })
-                    } catch (err) {
-                        console.warn('Failed to set isToolLocked:', err)
-                    }
-
-                    // Default opacity 100% for next shapes.
-                    try {
-                        if (typeof editor.setOpacityForNextShapes === 'function') {
-                            editor.setOpacityForNextShapes(1)
-                        }
-                    } catch {
-                        // Older or future versions may not have this method.
-                    }
-
-                    // Set default zoom to 75%
-                    setTimeout(() => {
+                let saveTimeout
+                const unsubscribe = editor.store.listen(() => {
+                    clearTimeout(saveTimeout)
+                    saveTimeout = setTimeout(() => {
                         try {
-                            const camera = editor.getCamera()
-                            editor.setCamera({ ...camera, z: 0.75 })
+                            const snapshot = getSnapshot(editor.store)
+                            localStorage.setItem(STORAGE_KEY_LOCAL, JSON.stringify(snapshot))
                         } catch (error) {
-                            console.log('Could not set initial zoom level')
+                            console.warn('Failed to save document:', error)
                         }
                     }, 100)
+                })
 
-                    // Tool change handling for default styles
-                    let currentTool = editor.getCurrentToolId()
-                    const stylePrefs = getStylePreferences()
-                    
-                    // Apply saved preferences for the current tool
-                    const applyToolPreferences = (toolId) => {
-                        const prefs = stylePrefs[toolId]
-                        if (prefs) {
-                            if (prefs.size && (toolId === 'draw' || toolId === 'highlight')) {
-                                editor.setStyleForNextShapes(DefaultSizeStyle, prefs.size)
-                            }
-                            if (prefs.font && (toolId === 'text' || toolId === 'note')) {
-                                editor.setStyleForNextShapes(DefaultFontStyle, prefs.font)
-                            }
-                        } else {
-                            // Set defaults for first time
-                            if (toolId === 'draw' || toolId === 'highlight') {
-                                editor.setStyleForNextShapes(DefaultSizeStyle, 's')
-                                saveStylePreference(toolId, 'size', 's')
-                            }
-                            if (toolId === 'text' || toolId === 'note') {
-                                editor.setStyleForNextShapes(DefaultFontStyle, 'mono')
-                                saveStylePreference(toolId, 'font', 'mono')
-                            }
-                        }
-                    }
-                    
-                    // Monitor tool changes
-                    const checkToolChange = () => {
-                        const newTool = editor.getCurrentToolId()
-                        if (newTool !== currentTool) {
-                            currentTool = newTool
-                            applyToolPreferences(newTool)
-                        }
-                    }
-                    
-                    // Initial application
-                    applyToolPreferences(currentTool)
-                    
-                    // Check for tool changes periodically
-                    const toolCheckInterval = setInterval(checkToolChange, 100)
-                    
-                    // Listen for style changes to save preferences
-                    editor.sideEffects.registerAfterChangeHandler('instance', () => {
-                        const toolId = editor.getCurrentToolId()
-                        const instanceState = editor.getInstanceState()
-                        if (toolId === 'draw' || toolId === 'highlight') {
-                            const currentSize = instanceState.stylesForNextShape[DefaultSizeStyle.id]
-                            if (currentSize) {
-                                saveStylePreference(toolId, 'size', currentSize)
-                            }
-                        }
-                        if (toolId === 'text' || toolId === 'note') {
-                            const currentFont = instanceState.stylesForNextShape[DefaultFontStyle.id]
-                            if (currentFont) {
-                                saveStylePreference(toolId, 'font', currentFont)
-                            }
-                        }
-                    })
-                    
-                    // Use shared color configuration
-                    const { colorMap, colorRgbMap, colorAliases } = COLOR_SHORTCUTS
-                    
-                    const findColorButton = (color) => {
-                        // Get all possible names for this color
-                        const colorNames = [color, ...(colorAliases[color] || [])]
-                        
-                        
-                        // Priority 1: Direct color button selectors
-                        for (const colorName of colorNames) {
-                            const directSelectors = [
-                                `[data-testid="style.color.${colorName}"]`,
-                                `[data-testid*="color"][data-testid*="${colorName}"]`,
-                                `[aria-label*="color ${colorName}"]`,
-                                `[aria-label*="${colorName}"]`,
-                                `[title*="${colorName}"]`
-                            ]
-                            
-                            for (const selector of directSelectors) {
-                                const button = document.querySelector(selector)
-                                if (button) {
-                                    return button
-                                }
-                            }
-                        }
-                        
-                        // Priority 2: Style panel buttons with matching background color
-                        const styleButtons = document.querySelectorAll('.tl-style-panel [role="button"], [data-testid*="style"] button, [data-testid*="color"] button')
-                        
-                        // Try multiple RGB values for this color
-                        const possibleRgbValues = [
-                            colorRgbMap[color],
-                            ...colorNames.map(name => colorRgbMap[name]).filter(Boolean)
-                        ]
-                        
-                        for (const targetRgb of possibleRgbValues) {
-                            if (targetRgb) {
-                                for (const button of styleButtons) {
-                                    const bgColor = window.getComputedStyle(button).backgroundColor
-                                    if (bgColor === targetRgb) {
-                                        return button
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Priority 3: Broader search by color name in attributes
-                        const allButtons = document.querySelectorAll('button, [role="button"]')
-                        for (const colorName of colorNames) {
-                            for (const button of allButtons) {
-                                const testId = button.getAttribute('data-testid') || ''
-                                const ariaLabel = button.getAttribute('aria-label') || ''
-                                const title = button.getAttribute('title') || ''
-                                
-                                if (testId.includes(colorName) || ariaLabel.toLowerCase().includes(colorName) || title.toLowerCase().includes(colorName)) {
-                                    // Make sure it's likely a color button
-                                    if (testId.includes('color') || ariaLabel.includes('color') || title.includes('color') || 
-                                        button.closest('[data-testid*="color"], .tl-style-panel')) {
-                                        return button
-                                    }
-                                }
-                            }
-                        }
-                        
-                        return null
-                    }
-                    
-                    const handleKeydown = (e) => {
-                        // Skip if typing in input fields or using modifiers
-                        if (e.target.tagName === 'INPUT' || 
-                            e.target.tagName === 'TEXTAREA' || 
-                            e.target.isContentEditable ||
-                            e.ctrlKey || e.metaKey || e.altKey) {
-                            return
-                        }
-                        
-                        const color = colorMap[e.key]
-                        if (!color) return // Let TLDraw handle non-color keys (like Delete, Arrow keys, etc.)
-                        
-                        
-                        // Only block TLDraw from processing color shortcut keys
-                        e.preventDefault()
-                        e.stopPropagation()
-                        e.stopImmediatePropagation()
-                        
-                        // Use requestAnimationFrame for better performance than setTimeout
-                        requestAnimationFrame(() => {
-                            const button = findColorButton(color)
-                            if (button) {
-                                button.click()
-                            }
-                        })
-                        
-                        return false
-                    }
-                    
-                    // Add event listener with capture phase to intercept before TLDraw
-                    document.addEventListener('keydown', handleKeydown, true)
-                    
-                    // Set up persistence using editor events
-                    let saveTimeout
-                    const handleChange = () => {
-                        clearTimeout(saveTimeout)
-                        saveTimeout = setTimeout(() => {
-                            try {
-                                const snapshot = getSnapshot(editor.store)
-                                localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
-                            } catch (error) {
-                                console.warn('Failed to save document:', error)
-                            }
-                        }, 100)
-                    }
-                    
-                    // Listen for changes using editor events
-                    editor.store.listen(handleChange)
-                    
-                    // Load saved data after editor is ready
-                    setTimeout(() => {
-                        try {
-                            const saved = localStorage.getItem(STORAGE_KEY)
-                            if (saved) {
-                                const snapshot = JSON.parse(saved)
-                                loadSnapshot(editor.store, snapshot)
-                            }
-                        } catch (error) {
-                            console.warn('Failed to load saved document:', error)
-                        }
-                    }, 100)
-                    
-                    // Cleanup function to remove event listener and interval
-                    return () => {
-                        document.removeEventListener('keydown', handleKeydown, true)
-                        clearInterval(toolCheckInterval)
-                    }
-                }}
-            />
-            
-            
-            {/* Loading indicator for room mode */}
-            {roomId && (
-                <div style={{
-                    position: 'absolute',
-                    bottom: 10,
-                    right: 10,
-                    background: 'rgba(0,0,0,0.8)',
-                    color: 'white',
-                    padding: '6px 10px',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontFamily: 'system-ui, -apple-system, sans-serif',
-                    pointerEvents: 'none',
-                    zIndex: 1000,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                }}>
-                    <span>Room: {roomId}</span>
-                    <span>🟡 Connecting...</span>
-                </div>
-            )}
-        </>
+                return () => {
+                    cleanupDefaults()
+                    clearTimeout(saveTimeout)
+                    unsubscribe()
+                }
+            }}
+        />
     )
 }
 
