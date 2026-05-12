@@ -30,7 +30,7 @@ jobs:
       # would otherwise be silently pulled into every CI run that has
       # security-events: write + pull-requests: write permissions.
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -38,26 +38,34 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'Trivy Security Scan'
 
-      # `continue-on-error: true` was here, which made the
-      # `--severity-threshold=high` flag meaningless — high/critical CVEs
-      # got logged as warnings and the job still passed. Removed.
-      - name: Run Snyk security scan
-        run: |
-          cd ./tldraw
-          npx snyk test --severity-threshold=high
+      # Snyk needs (a) node_modules present so it can resolve the dep
+      # tree and (b) a SNYK_TOKEN secret. The earlier version of this
+      # step did neither and was masked by `continue-on-error: true` —
+      # the threshold flag did nothing. This version installs deps,
+      # and skips cleanly when the token isn't configured so the
+      # severity threshold can actually fail the job when it matters.
+      - name: Run Snyk security scan (tldraw)
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "::notice::SNYK_TOKEN not configured — skipping Snyk scan."
+            exit 0
+          fi
+          cd ./tldraw
+          npm install --no-audit --no-fund
+          npx snyk test --severity-threshold=high
 
       # Tag-pinned (was @main). Same supply-chain reasoning as trivy-action.
       - name: Check for secrets in code
         if: github.event_name == 'push'
-        uses: trufflesecurity/trufflehog@v3.82.0
+        uses: trufflesecurity/trufflehog@v3.95.3
         with:
           path: ./
           base: ${{ github.event.before }}
@@ -65,7 +73,7 @@ jobs:
 
       - name: Check for secrets in code (PR)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@v3.82.0
+        uses: trufflesecurity/trufflehog@v3.95.3
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
@@ -80,7 +88,7 @@ jobs:
 
       - name: Comment security findings
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
