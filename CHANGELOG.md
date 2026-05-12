@@ -9,6 +9,52 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-05-12
+
+Post-v1.4.0 follow-up: a fictional action version pin had broken the
+Security Scan workflow for every push since the release, and two
+real deployment paths (systemd unit + submodule upgrade) tripped
+users upgrading existing installs. Also exposes the tldraw license
+key as an env var so non-localhost deployments are unblocked.
+
+### Added
+
+- **Optional `TLDRAW_LICENSE_KEY` env var** threaded through to the
+  tldraw bundle at image-build time. Empty (default) keeps the
+  current WatermarkOnly behavior; on `localhost` that's fine, but
+  non-localhost deployments must set this — tldraw v5 blocks the
+  canvas with a license-required overlay otherwise.
+
+### Fixed
+
+- **`aquasecurity/trivy-action@0.28.0`** was a tag that doesn't exist
+  on the upstream action. Security Scan failed to resolve the action
+  on every push since v1.4.0 and blocked every open PR's CI. Bumped
+  to `v0.36.0` along with the other Dependabot-flagged outdated
+  pins (`trufflehog`, `codeql-action`, `upload-artifact`,
+  `setup-node`, `github-script`, `action-gh-release`).
+- **Snyk step in `security.yml`** never ran cleanly. It called
+  `npx snyk test` without first installing tldraw's deps (Snyk
+  errored "Missing node_modules folder") and assumed a `SNYK_TOKEN`
+  secret that isn't configured. Now runs `npm install` first and
+  skips with a workflow notice when the token isn't present.
+- **`drawapp.service`'s `ProtectHome=true`** blocked the docker CLI's
+  access to `/root/.docker/config.json` for registry auth. Changed
+  to `ProtectHome=read-only` and added `/root/.docker` to
+  `ReadWritePaths`.
+- **Submodule auto-init on upgrade.** `git pull` on a pre-v1.4 clone
+  left the whiteboard submodule path unpopulated, breaking the next
+  build. `manage-config.sh` now runs `git submodule update --init
+  --recursive` from every start/rebuild path when an existing
+  submodule directory has no `.git` pointer.
+
+### Changed
+
+- README documents the tldraw v5 license-key requirement for
+  non-localhost deployments with the three options (free
+  WatermarkOnly / trial-commercial / stay on localhost) and the
+  end-to-end flow from `.env` to bundle.
+
 ## [1.4.0] — 2026-05-11
 
 ### Added
@@ -178,5 +224,6 @@ For commit-level detail, see the auto-generated body of each
 
 ---
 
-[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.1
 [1.4.0]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.0

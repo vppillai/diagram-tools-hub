@@ -44,6 +44,8 @@ cd diagram-tools-hub
 ```
 
 > `--recurse-submodules` initializes the [whiteboard](https://github.com/vppillai/whiteboard) submodule (pinned to a release tag). If you cloned without it, run `git submodule update --init --recursive` from inside the repo before starting services.
+>
+> **Upgrading an existing clone:** `git pull` does not initialize newly-added submodules. `manage-config.sh start` (and `rebuild`) now auto-init missing submodules before building, so the upgrade path is `git pull && ./manage-config.sh rebuild`. If you'd rather do it explicitly: `git submodule update --init --recursive`.
 
 **Development Mode:**
 ```bash
@@ -53,6 +55,15 @@ cd diagram-tools-hub
 ```
 
 Then open https://localhost:8080 in your browser.
+
+> 📜 **TLDraw needs a license key for non-localhost deployments.** On
+> `localhost` and `127.0.0.1` the canvas works without a key (just a
+> small corner watermark + console warning). On any other hostname
+> (LAN address, internal DNS, public URL) tldraw v5 blocks the canvas
+> with a license-required overlay. Get a free WatermarkOnly key at
+> https://tldraw.dev/community/license, drop it into `.env` as
+> `TLDRAW_LICENSE_KEY=…`, and rebuild the tldraw container — see the
+> "TLDraw Licensing" section below for details.
 
 ## Access Points
 
@@ -209,6 +220,45 @@ TLDraw features a powerful WebSocket-based collaboration system supporting multi
 - **Storage**: File-based persistence in `.rooms` and `.assets` directories
 - **Monitoring**: REST API endpoints for room statistics and health checks
 
+### TLDraw Licensing
+
+tldraw v5 enforces a client-side license check that escalates by
+hostname:
+
+| Hostname              | Without `TLDRAW_LICENSE_KEY`                            |
+|-----------------------|---------------------------------------------------------|
+| `localhost`, `127.0.0.1` | Canvas renders normally; small corner watermark + console warning |
+| Any other hostname    | Canvas is blocked with a license-required overlay       |
+
+Three options to satisfy the check:
+
+1. **Free WatermarkOnly license** *(recommended for personal / OSS use)* —
+   request via the form at
+   [tldraw.dev/community/license](https://tldraw.dev/community/license).
+   tldraw emails you a key. The small corner watermark stays; the
+   blocking overlay and console warning go away.
+2. **Trial / commercial license** — contact sales@tldraw.com. No watermark.
+3. **Stay on localhost** — for purely local development the warning is
+   cosmetic; no key needed.
+
+Once you have a key, set it in `.env`:
+
+```bash
+TLDRAW_LICENSE_KEY=<paste-key-here>
+```
+
+Then rebuild the tldraw container — the key is baked into the bundle
+at build time:
+
+```bash
+./manage-config.sh rebuild tldraw
+```
+
+The key flows from `.env` → docker-compose `build.args` →
+`ARG VITE_TLDRAW_LICENSE_KEY` in `tldraw/Dockerfile` → Vite reads it
+at build time via `import.meta.env.VITE_TLDRAW_LICENSE_KEY`. An empty
+value is treated the same as omitting the prop.
+
 ### Monitoring & Analytics
 
 The TLDraw system includes comprehensive monitoring capabilities:
@@ -245,6 +295,7 @@ SSL_DOMAIN=localhost                # SSL certificate domain
 
 # TLDraw Settings
 TLDRAW_DEBUG_PANEL=true             # TLDraw debug panel (enabled)
+TLDRAW_LICENSE_KEY=                 # see "TLDraw licensing" below; required for non-localhost deploys
 
 # Application Settings
 NODE_ENV=production                 # Node.js environment

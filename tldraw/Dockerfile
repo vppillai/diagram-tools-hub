@@ -26,6 +26,13 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund
 
+# Optional tldraw license key. Vite reads VITE_-prefixed env vars at build
+# time and substitutes them into the bundle. Empty → unset behavior
+# (WatermarkOnly + console warning). docker-compose forwards
+# $TLDRAW_LICENSE_KEY from .env to this build arg.
+ARG VITE_TLDRAW_LICENSE_KEY=""
+ENV VITE_TLDRAW_LICENSE_KEY=$VITE_TLDRAW_LICENSE_KEY
+
 COPY index.html vite.config.js ./
 COPY src ./src
 RUN npm run build

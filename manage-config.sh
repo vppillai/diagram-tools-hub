@@ -26,6 +26,32 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# If `.gitmodules` declares submodules but the working tree has them
+# unpopulated (the classic "I upgraded from an older release with
+# `git pull` and the new whiteboard service builds with an empty
+# context" trap), initialize them. Called from every start/rebuild
+# entry point so existing installs upgrade cleanly without the user
+# having to remember `git submodule update --init --recursive`.
+ensure_submodules() {
+    [ -f .gitmodules ] || return 0
+    command -v git >/dev/null 2>&1 || return 0
+
+    # A submodule path that exists but has no .git pointer is unpopulated.
+    local needs_init=0
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        if [ -d "$path" ] && [ ! -e "$path/.git" ]; then
+            needs_init=1
+            break
+        fi
+    done < <(git config -f .gitmodules --get-regexp 'submodule\..*\.path' | awk '{print $2}')
+
+    if [ "$needs_init" = "1" ]; then
+        echo -e "${BLUE}[INFO]${NC} Initializing git submodules (whiteboard, …)…"
+        git submodule update --init --recursive
+    fi
+}
+
 # Logging functions
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -121,10 +147,10 @@ show_config() {
 start_services() {
     local cert_file="$2"
     local key_file="$3"
-    
-    # Handle SSL setup automatically
+
+    ensure_submodules
     setup_ssl_auto "$cert_file" "$key_file"
-    
+
     log_info "Starting all services..."
     
     # Stop any existing containers first to avoid conflicts
@@ -156,10 +182,10 @@ start_services() {
 start_dev_services() {
     local cert_file="$2"
     local key_file="$3"
-    
-    # Handle SSL setup automatically
+
+    ensure_submodules
     setup_ssl_auto "$cert_file" "$key_file"
-    
+
     log_info "Starting all services in development mode..."
     log_warning "Development mode: TLDraw will have hot-reload enabled and serve from source"
     
@@ -253,6 +279,7 @@ rebuild_services() {
     local key_file="$4"
     
     if [ -n "$service" ]; then
+        ensure_submodules
         log_info "Rebuilding and restarting $service service..."
         sudo docker compose build --no-cache "$service"
         sudo docker compose up -d "$service"
@@ -261,13 +288,11 @@ rebuild_services() {
     else
         log_info "Rebuilding and restarting all services..."
         sudo docker compose down
-        
-        # Handle SSL setup automatically
+
+        ensure_submodules
         setup_ssl_auto "$cert_file" "$key_file"
-        
-        # Ensure all configuration files exist
         ensure_configs_exist
-        
+
         sudo docker compose build --no-cache
         sudo docker compose up -d
         log_success "All services rebuilt and started successfully!"
@@ -296,6 +321,7 @@ rebuild_dev_services() {
     local key_file="$4"
     
     if [ -n "$service" ]; then
+        ensure_submodules
         log_info "Rebuilding and restarting $service service in development mode..."
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache "$service"
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d "$service"
@@ -305,13 +331,11 @@ rebuild_dev_services() {
         log_info "Rebuilding and restarting all services in development mode..."
         log_warning "Development mode: TLDraw will have hot-reload enabled and serve from source"
         sudo docker compose down
-        
-        # Handle SSL setup automatically
+
+        ensure_submodules
         setup_ssl_auto "$cert_file" "$key_file"
-        
-        # Ensure all configuration files exist
         ensure_configs_exist
-        
+
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
         log_success "All services rebuilt and started successfully in development mode!"
@@ -382,15 +406,13 @@ clean_rebuild() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         log_info "Performing complete clean and rebuild..."
-        
-        # Clean everything
+
         sudo docker compose down --remove-orphans --volumes --rmi all
         sudo docker system prune -a -f --volumes
-        
-        # Ensure all configuration files exist before rebuild
+
+        ensure_submodules
         ensure_configs_exist
-        
-        # Rebuild from scratch
+
         sudo docker compose build --no-cache
         sudo docker compose up -d
         
@@ -702,6 +724,8 @@ services:
     build:
       context: ./tldraw
       dockerfile: Dockerfile
+      args:
+        VITE_TLDRAW_LICENSE_KEY: \${TLDRAW_LICENSE_KEY:-}
     container_name: tldraw-app
     restart: unless-stopped
 
@@ -784,6 +808,8 @@ services:
     build:
       context: ./tldraw
       dockerfile: Dockerfile
+      args:
+        VITE_TLDRAW_LICENSE_KEY: \${TLDRAW_LICENSE_KEY:-}
     container_name: tldraw-app
     restart: unless-stopped
 
@@ -973,7 +999,7 @@ install_service() {
         -e "s|ExecStart=.*|ExecStart=$current_dir/manage-config.sh start|g" \
         -e "s|ExecStop=.*|ExecStop=$current_dir/manage-config.sh stop|g" \
         -e "s|ExecReload=.*|ExecReload=$current_dir/manage-config.sh restart|g" \
-        -e "s|ReadWritePaths=.*|ReadWritePaths=$current_dir|g" \
+        -e "s|ReadWritePaths=.*|ReadWritePaths=$current_dir /root/.docker|g" \
         "$service_file" > "$rendered"
 
     log_info "Copying service file to $systemd_dir..."
