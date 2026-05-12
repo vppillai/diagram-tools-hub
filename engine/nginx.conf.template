@@ -4,10 +4,14 @@
 # Substituted variables (and only these — nginx's own $host etc. pass
 # through unchanged because envsubst is called with an explicit allow-list):
 #
-#   ${LISTEN_DIRECTIVE}      - "listen 80;" or "listen 443 ssl http2;"
-#   ${SSL_PROTOCOLS_BLOCK}   - empty (HTTP) or ssl_protocols/ciphers config
-#   ${SSL_CERT_BLOCK}        - empty (HTTP) or ssl_certificate + key paths
-#   ${SECURITY_HEADERS}      - empty (HTTP) or HSTS + nosniff + Referrer-Policy
+#   LISTEN_DIRECTIVE    - "listen 80;" or "listen 443 ssl http2;"
+#   SSL_PROTOCOLS_BLOCK - empty (HTTP) or ssl_protocols/ciphers config
+#   SSL_CERT_BLOCK      - empty (HTTP) or ssl_certificate + key paths
+#   SECURITY_HEADERS    - empty (HTTP) or HSTS + nosniff + Referrer-Policy
+#
+# (Variable names above are intentionally written without the dollar-brace
+# syntax so envsubst doesn't substitute them inside the comment block —
+# yes, this bit us once.)
 #
 # Replaces three near-identical inline heredocs in manage-config.sh. The
 # previous CI variant of the config had drifted from the HTTPS one — most

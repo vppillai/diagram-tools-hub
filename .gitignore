@@ -45,11 +45,15 @@ Thumbs.db
 tldraw-sync-backend/.rooms/
 tldraw-sync-backend/.assets/
 
-# TLDraw frontend build artifacts
+# TLDraw frontend build artifacts and lockfiles.
+# Why no package-lock.json: Vite 8 pulls in rolldown, which carries
+# platform-specific native bindings as optional deps. npm's lockfile only
+# records optional deps for the platform that generated it (npm/cli#4828),
+# so checking one in would break either CI (x64) or arm64 dev hosts.
+# Sync-backend keeps its lockfile because it's pure Node, no native deps.
 tldraw/node_modules/
 tldraw/dist/
-# We standardize on npm for tldraw (package-lock.json). A stray bun.lock from
-# a local `bun install` shouldn't be checked in.
+tldraw/package-lock.json
 tldraw/bun.lock
 tldraw/bun.lockb
 

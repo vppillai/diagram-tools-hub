@@ -17,8 +17,14 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# We use `npm install` (not `npm ci`) on purpose. Vite 8 pulls in rolldown,
+# which carries platform-specific native bindings as optional deps. npm's
+# lockfile only records optional deps for the platform that generated it
+# (npm/cli#4828), so a lockfile checked in from arm64 would fail to fetch
+# the linux-x64-musl binding on CI runners, and vice versa. `npm install`
+# resolves the right binding for the build host at image-build time.
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
 COPY index.html vite.config.js ./
 COPY src ./src
@@ -28,8 +34,8 @@ RUN npm run build
 FROM node:22-alpine AS dev
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
 # Source is mounted at runtime by docker-compose.dev.yml; this layer just
 # bootstraps node_modules and the dev server entrypoint.
