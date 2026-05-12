@@ -57,7 +57,7 @@ jobs:
       # Tag-pinned (was @main). Same supply-chain reasoning as trivy-action.
       - name: Check for secrets in code
         if: github.event_name == 'push'
-        uses: trufflesecurity/trufflehog@v3.82.0
+        uses: trufflesecurity/trufflehog@v3.95.3
         with:
           path: ./
           base: ${{ github.event.before }}
@@ -65,7 +65,7 @@ jobs:
 
       - name: Check for secrets in code (PR)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@v3.82.0
+        uses: trufflesecurity/trufflehog@v3.95.3
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
