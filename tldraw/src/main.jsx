@@ -544,14 +544,26 @@ function setupCanvasDefaults(editor) {
         }
     }, 100)
 
+    // Per-tool defaults + persistence. Two style props are tracked:
+    //   - DefaultSizeStyle (size) for draw/highlight (stroke) AND text/note (text size)
+    //   - DefaultFontStyle (font) for text/note
+    // Per-tool defaults: draw/highlight start at 's'; text/note start at
+    // 'm' (medium reads cleanest across the canvas) with mono font. Once
+    // the user changes either style from the style panel, the new value
+    // sticks across tool switches for the rest of the session (and is
+    // restored on next mount via localStorage).
+    const SIZE_TOOLS = new Set(['draw', 'highlight', 'text', 'note'])
+    const FONT_TOOLS = new Set(['text', 'note'])
+    const DEFAULT_SIZE_FOR = { draw: 's', highlight: 's', text: 'm', note: 'm' }
+
     const applyToolPreferences = (toolId) => {
         const prefs = getStylePreferences()[toolId]
-        if (toolId === 'draw' || toolId === 'highlight') {
-            const size = prefs?.size ?? 's'
+        if (SIZE_TOOLS.has(toolId)) {
+            const size = prefs?.size ?? DEFAULT_SIZE_FOR[toolId]
             editor.setStyleForNextShapes(DefaultSizeStyle, size)
             if (!prefs?.size) saveStylePreference(toolId, 'size', size)
         }
-        if (toolId === 'text' || toolId === 'note') {
+        if (FONT_TOOLS.has(toolId)) {
             const font = prefs?.font ?? 'mono'
             editor.setStyleForNextShapes(DefaultFontStyle, font)
             if (!prefs?.font) saveStylePreference(toolId, 'font', font)
@@ -569,11 +581,11 @@ function setupCanvasDefaults(editor) {
                 applyToolPreferences(lastTool)
             }
             const styles = next.stylesForNextShape || {}
-            if (lastTool === 'draw' || lastTool === 'highlight') {
+            if (SIZE_TOOLS.has(lastTool)) {
                 const size = styles[DefaultSizeStyle.id]
                 if (size) saveStylePreference(lastTool, 'size', size)
             }
-            if (lastTool === 'text' || lastTool === 'note') {
+            if (FONT_TOOLS.has(lastTool)) {
                 const font = styles[DefaultFontStyle.id]
                 if (font) saveStylePreference(lastTool, 'font', font)
             }
