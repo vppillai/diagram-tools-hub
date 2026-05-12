@@ -17,12 +17,20 @@ permissions:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          # whiteboard/ is a submodule; without recursive checkout Trivy
+          # would scan an empty directory and silently miss its dep tree.
+          submodules: recursive
 
+      # Pinned to a release tag (was @master). A compromised upstream commit
+      # would otherwise be silently pulled into every CI run that has
+      # security-events: write + pull-requests: write permissions.
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -36,17 +44,20 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: 'Trivy Security Scan'
 
+      # `continue-on-error: true` was here, which made the
+      # `--severity-threshold=high` flag meaningless — high/critical CVEs
+      # got logged as warnings and the job still passed. Removed.
       - name: Run Snyk security scan
         run: |
           cd ./tldraw
           npx snyk test --severity-threshold=high
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        continue-on-error: true
 
+      # Tag-pinned (was @main). Same supply-chain reasoning as trivy-action.
       - name: Check for secrets in code
         if: github.event_name == 'push'
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.82.0
         with:
           path: ./
           base: ${{ github.event.before }}
@@ -54,7 +65,7 @@ jobs:
 
       - name: Check for secrets in code (PR)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.82.0
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}

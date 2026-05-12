@@ -43,6 +43,10 @@ permissions:
   packages: write
   security-events: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -50,6 +54,7 @@ env:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.normalize.outputs.version }}
     steps:
@@ -167,6 +172,7 @@ jobs:
   build-and-push:
     needs: create-release
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         # `include` lets each service carry its own build_args. tldraw needs
@@ -214,3 +220,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Post-push smoke test: pull the freshly-tagged image and start it
+      # for ~5 seconds. Catches a class of bug where the build succeeds
+      # but the container fails to start (broken CMD, missing perms,
+      # bad entrypoint). Doesn't replace a full integration test, but
+      # blocks the worst regressions from reaching :latest.
+      - name: Smoke-test the pushed image
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:${{ needs.create-release.outputs.version }}
+        run: |
+          echo "Pulling $IMAGE"
+          docker pull "$IMAGE"
+          echo "Starting container..."
+          CID=$(docker run -d --rm "$IMAGE")
+          # Give it a few seconds to crash if it's going to.
+          sleep 5
+          if docker ps -q --no-trunc | grep -q "^${CID}"; then
+            echo "✅ Container still running after 5s"
+            docker stop "$CID" >/dev/null
+          else
+            echo "❌ Container exited within 5s — image is broken."
+            docker logs "$CID" 2>&1 | tail -30 || true
+            exit 1
+          fi

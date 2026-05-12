@@ -1,18 +1,20 @@
 services:
-  # TLDraw container in development mode
+  # TLDraw container in development mode. The Dockerfile is multi-stage —
+  # `target: dev` selects the vite dev server stage instead of the default
+  # `runtime` stage that serves the built bundle via nginx.
   tldraw:
     build:
       context: ./tldraw
       dockerfile: Dockerfile
-      args:
-        BUILD_MODE: development
+      target: dev
     container_name: tldraw-app-dev
-    environment:
-      - BUILD_MODE=development
     volumes:
-      # Mount individual source files for live reloading in dev mode
-      - ./tldraw/main.jsx:/app/main.jsx:ro
+      # Source mounted for live reloading. The previous mount path
+      # (./tldraw/main.jsx) didn't exist — the file lives in src/. Docker
+      # silently created an empty directory at that location, so live-reload
+      # never worked.
+      - ./tldraw/src:/app/src:ro
       - ./tldraw/index.html:/app/index.html:ro
       - ./tldraw/vite.config.js:/app/vite.config.js:ro
-      # Don't mount node_modules or other build artifacts
+      # Don't mount node_modules — bake into the image at build time.
     restart: unless-stopped

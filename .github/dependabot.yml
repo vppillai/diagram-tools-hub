@@ -47,7 +47,10 @@ updates:
       prefix: "ci"
       include: "scope"
 
-  # Enable version updates for Docker
+  # Docker base-image updates for the per-service Dockerfiles.
+  # (A duplicate "Docker Compose" entry pointing at the same directory
+  # was here previously — dependabot dedupes silently, so the second
+  # block was dead config that confused readers.)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -62,19 +65,3 @@ updates:
     commit-message:
       prefix: "docker"
       include: "scope"
-
-  # Enable version updates for Docker Compose
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 10
-    reviewers:
-      - "vppillai"
-    assignees:
-      - "vppillai"
-    commit-message:
-      prefix: "docker"
-      include: "scope" 

@@ -1,0 +1,160 @@
+# Template for the hub's reverse-proxy nginx config. Rendered by
+# manage-config.sh's render_nginx_config() function via envsubst.
+#
+# Substituted variables (and only these — nginx's own $host etc. pass
+# through unchanged because envsubst is called with an explicit allow-list):
+#
+#   LISTEN_DIRECTIVE    - "listen 80;" or "listen 443 ssl http2;"
+#   SSL_PROTOCOLS_BLOCK - empty (HTTP) or ssl_protocols/ciphers config
+#   SSL_CERT_BLOCK      - empty (HTTP) or ssl_certificate + key paths
+#   SECURITY_HEADERS    - empty (HTTP) or HSTS + nosniff + Referrer-Policy
+#
+# (Variable names above are intentionally written without the dollar-brace
+# syntax so envsubst doesn't substitute them inside the comment block —
+# yes, this bit us once.)
+#
+# Replaces three near-identical inline heredocs in manage-config.sh. The
+# previous CI variant of the config had drifted from the HTTPS one — most
+# notably the tldraw-sync proxy path was /tldraw/sync/ in CI but
+# /tldraw-sync/ in HTTPS and HTTP-fallback, so the sync feature only
+# worked in two of the three modes. One source of truth fixes that class
+# of bug for good.
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+${SSL_PROTOCOLS_BLOCK}
+    upstream drawio_backend      { server drawio:8080; }
+    upstream excalidraw_backend  { server excalidraw:80; }
+    upstream tldraw_backend      { server tldraw:3000; }
+    upstream tldraw_sync_backend { server tldraw-sync:3001; }
+    upstream whiteboard_backend  { server whiteboard:8787; }
+
+    server {
+        ${LISTEN_DIRECTIVE}
+        server_name _;
+${SSL_CERT_BLOCK}${SECURITY_HEADERS}
+        # Main hub landing page.
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+
+        # ----- Draw.io ------------------------------------------------------
+        location /drawio { return 301 /drawio/; }
+        # Embed mode allows third-party framing for users embedding diagrams.
+        location /drawio/embed/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            add_header X-Frame-Options "" always;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+        location /drawio/ {
+            proxy_pass http://drawio_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            add_header X-Frame-Options SAMEORIGIN always;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # ----- Excalidraw ---------------------------------------------------
+        location /excalidraw { return 301 /excalidraw/; }
+        location /excalidraw/ {
+            proxy_pass http://excalidraw_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+        # Excalidraw requests /assets, /manifest.webmanifest, /sw.js from
+        # the page root; route those to the excalidraw upstream (but not
+        # if they're part of the /tldraw/ mount).
+        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest|sw\.js) {
+            proxy_pass http://excalidraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # ----- TLDraw -------------------------------------------------------
+        location /tldraw { return 301 /tldraw/; }
+        # Vite emits hash-named bundles under /assets/ — the tldraw nginx
+        # serves them at /assets/foo.js, but the hub mount surfaces them
+        # at /tldraw/assets/foo.js. Strip the /tldraw prefix before
+        # forwarding so the upstream finds the file.
+        location ~ ^/tldraw/assets/.*\.(js|css|woff2?|ttf|otf|png|jpg|svg)$ {
+            rewrite ^/tldraw(.*)$ $1 break;
+            proxy_pass http://tldraw_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        location /tldraw/ {
+            proxy_pass http://tldraw_backend/tldraw/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # WebSocket upgrade — needed for vite dev HMR in the dev compose.
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # ----- TLDraw sync backend (WebSocket + REST + asset uploads) ------
+        # The frontend connects to wss://host/tldraw-sync/connect/<room>
+        # so this path is load-bearing; the v1.3 CI nginx config used
+        # /tldraw/sync/ instead and broke real-time collab in CI mode.
+        location /tldraw-sync/ {
+            rewrite ^/tldraw-sync/(.*)$ /$1 break;
+            proxy_pass http://tldraw_sync_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+
+        # ----- Whiteboard ---------------------------------------------------
+        # vppillai/whiteboard, submodule pinned to a tag. Stateless static
+        # SPA — nginx strips the /whiteboard/ prefix on proxy_pass.
+        location /whiteboard { return 301 /whiteboard/; }
+        location /whiteboard/ {
+            proxy_pass http://whiteboard_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # ----- Misc ---------------------------------------------------------
+        location = /favicon.ico {
+            return 204;
+            add_header Content-Type image/x-icon;
+        }
+        location /health {
+            access_log off;
+            return 200 "OK\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}

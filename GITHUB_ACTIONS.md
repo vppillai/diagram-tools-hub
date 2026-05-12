@@ -104,11 +104,14 @@ The workflows use these secrets (if needed):
 
 ### Docker Images
 
-Images are automatically built and pushed to (release only):
-- `ghcr.io/vppillai/diagram-tools-hub/tldraw:latest`
-- `ghcr.io/vppillai/diagram-tools-hub/engine:latest`
-- Tagged versions: `ghcr.io/vppillai/diagram-tools-hub/tldraw:v1.0.0`
-- **No non-release images** - keeps container registry clean
+Per-service images are built and pushed to GHCR on each tagged release.
+The namespace uses `-` as a separator (not `/`); there is no `engine`
+image — the hub's reverse proxy is the upstream `nginx:alpine`.
+
+- `ghcr.io/vppillai/diagram-tools-hub-tldraw:latest`
+- `ghcr.io/vppillai/diagram-tools-hub-tldraw:vX.Y.Z`
+- `ghcr.io/vppillai/diagram-tools-hub-whiteboard:latest`
+- `ghcr.io/vppillai/diagram-tools-hub-whiteboard:vX.Y.Z`
 
 ### Branch Protection
 

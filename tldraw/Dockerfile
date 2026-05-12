@@ -1,31 +1,71 @@
-FROM node:22-alpine
+# syntax=docker/dockerfile:1.7
+#
+# TLDraw — production image.
+#
+# Stages:
+#   build    — install deps + vite build → /app/dist
+#   dev      — node:22-alpine + vite dev server (used by docker-compose.dev.yml
+#              via `target: dev`)
+#   runtime  — (default) nginx:alpine serving /app/dist; this is the last
+#              stage so plain `docker build` resolves to it
+#
+# Replaces the v1.3 pattern of `serve -s dist` (a Node dev tool shipped to
+# prod, no security headers, no compression config) with an alpine nginx
+# multi-stage build.
 
+# ---- build -----------------------------------------------------------------
+FROM node:22-alpine AS build
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package.json .
+# We use `npm install` (not `npm ci`) on purpose. Vite 8 pulls in rolldown,
+# which carries platform-specific native bindings as optional deps. npm's
+# lockfile only records optional deps for the platform that generated it
+# (npm/cli#4828), so a lockfile checked in from arm64 would fail to fetch
+# the linux-x64-musl binding on CI runners, and vice versa. `npm install`
+# resolves the right binding for the build host at image-build time.
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
-# Install dependencies (this layer will be cached if package.json doesn't change)
-RUN npm install
+COPY index.html vite.config.js ./
+COPY src ./src
+RUN npm run build
 
-# Copy application files (these change more frequently)
-COPY index.html .
-COPY src/ src/
-COPY vite.config.js .
+# ---- dev (for docker-compose.dev.yml; selected via `target: dev`) ----------
+FROM node:22-alpine AS dev
+WORKDIR /app
 
-# Build argument to control build mode
-ARG BUILD_MODE=production
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
-
-# Conditionally build for production if BUILD_MODE is production
-RUN if [ "$BUILD_MODE" = "production" ]; then \
-        npm run build && npm install -g serve; \
-    fi
+# Source is mounted at runtime by docker-compose.dev.yml; this layer just
+# bootstraps node_modules and the dev server entrypoint.
+COPY index.html vite.config.js ./
+COPY src ./src
 
 EXPOSE 3000
+CMD ["npm", "run", "dev"]
 
-# Use a script to determine which command to run based on BUILD_MODE
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# ---- runtime (default) -----------------------------------------------------
+FROM nginx:alpine AS runtime
 
-CMD ["docker-entrypoint.sh"] 
+# Drop the stock welcome page, then drop our config in. The stock
+# default.conf serves the welcome page on :80; we replace it entirely with
+# nginx.conf which listens on :3000.
+RUN rm -f /etc/nginx/conf.d/default.conf /usr/share/nginx/html/index.html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Listening on 3000 (unprivileged) lets us run as the stock nginx user.
+# nginx writes to /var/cache/nginx/* and /var/run/nginx.pid at startup,
+# so those paths need to be owned by nginx before the USER switch.
+# We also dump access/error logs to /dev/stdout-stderr (the base image
+# already symlinks these for us).
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx \
+ && touch /var/run/nginx.pid \
+ && chown nginx:nginx /var/run/nginx.pid
+
+USER nginx
+
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]

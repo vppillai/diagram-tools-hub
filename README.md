@@ -22,8 +22,10 @@ A unified Docker-based platform that integrates four powerful diagramming tools 
 ### 🎨 **Advanced TLDraw Collaboration**
 - **Real-time Multi-user**: Live cursors, instant synchronization, presence indicators
 - **Smart User Management**: Auto-assigned superhero names with collision prevention
+- **Right-click Quick-Pick**: Visual 4×3 color swatch grid + 3×3 tool grid at the cursor, sized for pen-driven workflows (Wacom Intuos side-button)
+- **Sticky Tools and Styles**: The tool you pick stays active across shape commits; per-tool font/size choices persist for the session
 - **Keyboard Shortcuts**: Number keys (1-9) for instant color switching
-- **Asset Handling**: Image uploads with URL unfurling for bookmarks
+- **Asset Handling**: Image uploads (10 MB / 5000 px cap) with URL unfurling for bookmarks
 - **Room Persistence**: File-based storage with automatic cleanup
 
 ### 🔧 **Developer Experience**
@@ -31,17 +33,6 @@ A unified Docker-based platform that integrates four powerful diagramming tools 
 - **Comprehensive Monitoring**: Room statistics, health checks, system metrics
 - **Easy Management**: Single script for all operations (`manage-config.sh`)
 - **CI/CD Ready**: GitHub Actions with automated testing and releases
-
-## 🆕 What's New
-
-### Recent Enhancements
-- **🛠️ Development Mode**: Added `start-dev` and `rebuild-dev` commands for hot-reload development
-- **⌨️ Keyboard Shortcuts**: Custom number key shortcuts (1-9) for instant color switching in TLDraw  
-- **🔧 Smart Key Handling**: Fixed Delete key functionality while preserving color shortcuts
-- **📊 Enhanced Monitoring**: Comprehensive TLDraw health checks and room statistics
-- **🏗️ Production Builds**: Optimized Vite builds with minification and static serving
-- **🔄 Asset Management**: Fixed image paste functionality in collaborative rooms
-- **📱 Mobile Optimization**: Better responsive design and touch support
 
 ## Quick Start
 
@@ -191,7 +182,8 @@ TLDraw features a powerful WebSocket-based collaboration system supporting multi
 👥 **Real-time Presence:**
 - Live collaborative cursors with user identification
 - Real-time drawing updates and shape modifications
-- Connection status indicators (🟢 online, 🔴 offline, 🟡 loading)
+- Connection status indicators (🟢 synced, 🟡 local-only / loading, 🔴 error)
+- Tab-active indicator (💤) when a collaborator's tab is idle
 - User avatars showing active collaborators
 
 💾 **Intelligent Persistence:**
@@ -203,10 +195,12 @@ TLDraw features a powerful WebSocket-based collaboration system supporting multi
 - **URL Unfurling**: Automatic bookmark previews with title, description, and thumbnails
 
 ⌨️ **Enhanced User Experience:**
+- **Right-click Quick-Pick Menu**: 4×3 color swatch grid + 3×3 icon-only tool grid (draw / eraser / select / text / arrow / line / laser / rectangle / ellipse) at the cursor, plus a "More tools…" submenu for the long-tail. Designed for pen-driven workflows.
+- **Sticky Tools**: Picking a tool from the quick-pick or toolbar keeps it active across each shape/text commit (tldraw's `isToolLocked`); per-tool font and size preferences persist via localStorage.
 - **Custom Keyboard Shortcuts**: Quick color switching with number keys (1-9)
   - `1` = Black, `2` = Grey, `3` = Green, `4` = Yellow, `5` = Red
-  - `6` = Blue, `7` = Orange, `8` = Indigo, `9` = Violet
-- **Optimized Drawing**: Default small pen size for precise drawing
+  - `6` = Blue, `7` = Orange, `8` = Light-violet, `9` = Violet
+- **Optimized Drawing**: Small pen size by default for precise drawing; medium for text
 - **Smart Key Handling**: Shortcuts don't interfere with Delete, Arrow keys, or text input
 
 🔧 **System Architecture:**
@@ -301,10 +295,11 @@ cd tldraw-sync-backend && npm start     # Production mode
 
 ### Service Structure
 - **Engine** (Nginx) - Reverse proxy, SSL termination, and landing page server
-- **Draw.io** - Professional diagramming tool (port 8081 → `/drawio/`)
-- **Excalidraw** - Hand-drawn diagrams (port 8082 → `/excalidraw/`)  
-- **TLDraw** - Collaborative canvas (port 8083 → `/tldraw/`)
-- **TLDraw Sync** - WebSocket collaboration backend (port 3001, internal)
+- **Draw.io** - Professional diagramming tool (`/drawio/`)
+- **Excalidraw** - Hand-drawn diagrams (`/excalidraw/`)
+- **TLDraw** - Collaborative canvas (`/tldraw/`)
+- **TLDraw Sync** - WebSocket collaboration backend (internal-only, exposed via `/tldraw-sync/`)
+- **Whiteboard** - Low-latency pen-optimized canvas (`/whiteboard/`, submodule)
 
 ### Network Architecture
 - Shared Docker network: `diagram-tools-network`
@@ -315,13 +310,14 @@ cd tldraw-sync-backend && npm start     # Production mode
 ### Technology Stack
 
 **Frontend Technologies:**
-- **TLDraw**: React 18 + Vite 5 + @tldraw/tldraw ^2.0.0 + @tldraw/sync ^2.0.0
+- **TLDraw**: React 19 + Vite 8 + @tldraw/tldraw ^5.0.0 + @tldraw/sync ^5.0.0
 - **Draw.io**: Official jgraph/drawio Docker image
 - **Excalidraw**: Official excalidraw/excalidraw Docker image
+- **Whiteboard**: vppillai/whiteboard (submodule), Bun + custom canvas engine
 - **Nginx**: Alpine-based reverse proxy with HTTPS termination
 
 **Backend Technologies:**
-- **TLDraw Sync**: Node.js 20 + @tldraw/sync-core ^2.0.0 + WebSocket (ws ^8.18.0)
+- **TLDraw Sync**: Node.js 22 + @tldraw/sync-core ^5.0.0 + WebSocket (ws ^8.20.0)
 - **URL Unfurling**: unfurl.js ^6.4.0 for bookmark previews
 - **File Storage**: Persistent volumes for rooms (.rooms) and assets (.assets)
 
@@ -448,12 +444,25 @@ Found a bug or have an idea? Open an issue or submit a PR!
 - **Updates**: Keep the system updated by pulling latest releases regularly
 - **Room Cleanup**: Old rooms and assets are automatically cleaned up (configurable retention periods)
 
+> ⚠️ **LAN-only deployment**
+> The TLDraw sync backend (`/tldraw-sync/` + WebSocket) has **no
+> authentication**. Anyone who can reach the hub on the network can
+> open any room name, read its contents, and upload assets. Path
+> traversal, SSRF, and per-upload size limits are enforced, but the
+> authorization layer is not implemented. Do not expose this stack to
+> the public internet without putting an authenticating reverse proxy
+> (Cloudflare Access, Tailscale, basic auth in nginx, …) in front of
+> it. Auth is on the roadmap.
+
 ## Releases
 
-Docker images are automatically built and published:
+Per-service Docker images are built and published to GHCR on each tagged
+release. Note the namespace uses `-` as a separator (not `/`); there is no
+`engine` image — nginx is the upstream `nginx:alpine`.
+
 ```bash
-docker pull ghcr.io/vppillai/diagram-tools-hub/tldraw:latest
-docker pull ghcr.io/vppillai/diagram-tools-hub/engine:latest
+docker pull ghcr.io/vppillai/diagram-tools-hub-tldraw:latest
+docker pull ghcr.io/vppillai/diagram-tools-hub-whiteboard:latest
 ```
 
 ## License

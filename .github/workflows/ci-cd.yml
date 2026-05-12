@@ -14,10 +14,16 @@ permissions:
   contents: read
   packages: write
 
+# Cancel superseded runs on the same ref so two quick pushes to main
+# don't race to overwrite ghcr.io/.../-tldraw:latest.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # Simple build test
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         service: [tldraw, whiteboard]
@@ -49,6 +55,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     needs: build-test
+    timeout-minutes: 30
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix:
