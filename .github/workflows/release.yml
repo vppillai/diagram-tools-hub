@@ -1,23 +1,39 @@
+# Tag a version, write release notes (with real changelog), build + push
+# per-service Docker images (tldraw, whiteboard) to GHCR.
+#
+# Manually triggered via Actions UI. Specify version in x.y.z form
+# (e.g., 1.3.1). The 'v' prefix is auto-applied.
+#
+# What this gives you that the old workflow didn't:
+#   - Non-empty changelog (git log <prev-tag>..HEAD; old code did
+#     compareCommits('main','HEAD') which is always empty when dispatched
+#     from main HEAD)
+#   - Both tldraw AND whiteboard images published (old code did tldraw only)
+#   - Per-service image namespaces matching ci-cd.yml's build-and-push
+#     (ghcr.io/...-tldraw and ghcr.io/...-whiteboard, not the legacy
+#     bundled namespace)
+#   - All actions on Node-24 versions (no deprecation warnings)
+
 name: "🚀 Release Management"
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., 1.0.0 or v1.0.0 - will be normalized to v1.0.0)'
+        description: "Release version (e.g., 1.0.0 or v1.0.0 — normalized to vx.y.z)"
         required: true
         type: string
       release_type:
-        description: 'Release type'
+        description: "Release type (informational only)"
         required: true
-        default: 'patch'
+        default: "patch"
         type: choice
         options:
           - patch
           - minor
           - major
       prerelease:
-        description: 'Is this a prerelease?'
+        description: "Is this a prerelease?"
         required: false
         default: false
         type: boolean
@@ -27,201 +43,174 @@ permissions:
   packages: write
   security-events: write
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.normalize.outputs.version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout (full history + submodules)
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
+          submodules: recursive
 
       - name: Normalize version format
-        id: normalize_version
+        id: normalize
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          # Get the input version
-          INPUT_VERSION="${{ github.event.inputs.version }}"
-          
-          # Remove any existing 'v' prefix and add a new one
-          # This ensures format is always vx.y.z
-          CLEAN_VERSION=$(echo "$INPUT_VERSION" | sed 's/^v//')
-          NORMALIZED_VERSION="v$CLEAN_VERSION"
-          
-          # Validate version format (x.y.z)
-          if ! echo "$CLEAN_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "❌ Error: Version must be in format x.y.z (e.g., 1.0.0)"
-            echo "Received: $INPUT_VERSION"
+          # Strip any leading 'v', validate x.y.z, re-add 'v'.
+          CLEAN=$(echo "$INPUT_VERSION" | sed 's/^v//')
+          if ! echo "$CLEAN" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version must be x.y.z (received: $INPUT_VERSION)"
             exit 1
           fi
-          
-          echo "Original version: $INPUT_VERSION"
-          echo "Normalized version: $NORMALIZED_VERSION"
-          echo "normalized_version=$NORMALIZED_VERSION" >> $GITHUB_OUTPUT
-          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+          VERSION="v$CLEAN"
+          echo "Normalized: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Find previous tag
+        id: previous_tag
+        env:
+          NEW_VERSION: ${{ steps.normalize.outputs.version }}
+        run: |
+          # Most recent semver tag, excluding the new one being created.
+          # Filter to vN.N.N (no pre-release suffix, no the-double-v typo).
+          PREV=$(git tag --sort=-v:refname \
+                 | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                 | grep -v "^${NEW_VERSION}$" \
+                 | head -1 || true)
+          echo "Previous tag: ${PREV:-<none — first release>}"
+          echo "tag=${PREV}" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
         id: changelog
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: commits } = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: 'main',
-              head: 'HEAD'
-            });
-            
-            const conventionalCommits = commits.commits
-              .filter(commit => !commit.commit.message.includes('Merge'))
-              .map(commit => {
-                const message = commit.commit.message.split('\n')[0];
-                const sha = commit.sha.substring(0, 7);
-                return `- ${message} (${sha})`;
-              })
-              .join('\n');
-            
-            return conventionalCommits;
+        env:
+          PREV_TAG: ${{ steps.previous_tag.outputs.tag }}
+        run: |
+          if [ -n "$PREV_TAG" ]; then
+            echo "Building changelog: $PREV_TAG..HEAD"
+            LOG=$(git log "$PREV_TAG..HEAD" --pretty=format:'- %s (%h)' --no-merges)
+            if [ -z "$LOG" ]; then
+              LOG="- (no new commits since $PREV_TAG)"
+            fi
+          else
+            LOG="- Initial release."
+          fi
+          # Multi-line output via heredoc.
+          {
+            echo "result<<CHANGELOG_EOF"
+            echo "$LOG"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "--- Generated changelog ---"
+          echo "$LOG"
 
-      - name: Create Release
+      - name: Create GitHub release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.normalize_version.outputs.normalized_version }}
-          name: Release ${{ steps.normalize_version.outputs.normalized_version }}
-          body: |
-            ## 🚀 Release ${{ steps.normalize_version.outputs.normalized_version }}
-            
-            ### What's Changed
-            
-            ${{ steps.changelog.outputs.result }}
-            
-            ### 🐳 Docker Images
-            
-            - **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:${{ steps.normalize_version.outputs.normalized_version }}`
-            
-            ### 🚀 Quick Start
-            
-            ```bash
-            # Clone the repository
-            git clone https://github.com/${{ github.repository }}.git
-            cd diagram-tools-hub
-            
-            # Checkout this release
-            git checkout ${{ steps.normalize_version.outputs.normalized_version }}
-            
-            # Start all services
-            ./manage-config.sh start
-            
-            # Access the hub at http://localhost:8080
-            ```
-            
-            ### 📋 Features
-            
-            - 🎨 **Draw.io** - Professional diagramming platform
-            - ✏️ **Excalidraw** - Virtual whiteboard for sketching
-            - 🎨 **TLDraw** - Modern collaborative drawing canvas
-            - 🔧 **Easy Management** - Simple scripts for container management
-            
-            ### 🛠️ System Requirements
-            
-            - Docker and Docker Compose
-            - 4GB RAM minimum
-            - 2GB disk space
-            
-            ### 📝 Changelog
-            
-            See the [full changelog](https://github.com/${{ github.repository }}/commits/${{ steps.normalize_version.outputs.normalized_version }}) for detailed changes.
+          tag_name: ${{ steps.normalize.outputs.version }}
+          name: Release ${{ steps.normalize.outputs.version }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
+          body: |
+            ## 🚀 Release ${{ steps.normalize.outputs.version }}
 
-      - name: Update version in files
-        run: |
-          # Update version in README or other files if needed
-          echo "Version ${{ steps.normalize_version.outputs.normalized_version }} released successfully!"
-          echo "Release URL: ${{ steps.create_release.outputs.upload_url }}"
+            Type: **${{ github.event.inputs.release_type }}** ([compare](https://github.com/${{ github.repository }}/compare/${{ steps.previous_tag.outputs.tag }}...${{ steps.normalize.outputs.version }}))
+
+            ### What's Changed
+
+            ${{ steps.changelog.outputs.result }}
+
+            ### 🐳 Docker images
+
+            Per-service images, version-tagged + `:latest`:
+
+            - **TLDraw**: `ghcr.io/${{ env.IMAGE_NAME }}-tldraw:${{ steps.normalize.outputs.version }}`
+            - **Whiteboard**: `ghcr.io/${{ env.IMAGE_NAME }}-whiteboard:${{ steps.normalize.outputs.version }}`
+
+            ```bash
+            docker pull ghcr.io/${{ env.IMAGE_NAME }}-tldraw:${{ steps.normalize.outputs.version }}
+            docker pull ghcr.io/${{ env.IMAGE_NAME }}-whiteboard:${{ steps.normalize.outputs.version }}
+            ```
+
+            ### 🚀 Quick start
+
+            ```bash
+            git clone --recurse-submodules https://github.com/${{ github.repository }}.git
+            cd diagram-tools-hub
+            git checkout ${{ steps.normalize.outputs.version }}
+            ./manage-config.sh start
+            # Hub at https://localhost:8080
+            ```
+
+            ### 📋 Bundled tools
+
+            - 🎨 **Draw.io** — Professional diagramming platform
+            - ✏️ **Excalidraw** — Hand-drawn style diagrams
+            - 🎨 **TLDraw** — Modern collaborative drawing canvas (v5)
+            - 🖊️ **Whiteboard** — Low-latency pen-optimized whiteboard for Wacom Intuos
+            - 🔧 **Easy Management** — `manage-config.sh` orchestrates everything
+
+            ### 🛠️ System requirements
+
+            - Docker + Docker Compose plugin
+            - 4 GB RAM minimum
+            - 2 GB disk space
+
+  build-and-push:
+    needs: create-release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # `include` lets each service carry its own build_args. tldraw needs
+        # none; whiteboard needs BASE_PATH baked in at build time so asset
+        # URLs resolve correctly under nginx's sub-path mount.
+        include:
+          - service: tldraw
+            build_args: ""
+          - service: whiteboard
+            build_args: |
+              BASE_PATH=/whiteboard/
+    steps:
+      - name: Checkout at the new tag (with submodules)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.create-release.outputs.version }}
+          submodules: recursive
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate nginx configuration
-        run: |
-          # Generate nginx.conf using manage script before building
-          chmod +x ./manage-config.sh
-          ./manage-config.sh generate-nginx-config
-          echo "✅ nginx.conf generated for Docker build"
-
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
           tags: |
-            type=raw,value=${{ steps.normalize_version.outputs.normalized_version }}
+            type=raw,value=${{ needs.create-release.outputs.version }}
             type=raw,value=latest
 
-      - name: Build and push TLDraw image
-        uses: docker/build-push-action@v5
+      - name: Build and push image
+        uses: docker/build-push-action@v7
         with:
-          context: ./tldraw
+          context: ./${{ matrix.service }}
           push: true
+          build-args: ${{ matrix.build_args }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-
-      - name: Update release notes with Docker images
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Get the release that was just created
-            const { data: releases } = await github.rest.repos.listReleases({
-              owner: context.repo.owner,
-              repo: context.repo.repo
-            });
-            
-            const release = releases[0]; // Get the latest release
-            const version = release.tag_name;
-            const body = release.body || '';
-            
-            const dockerImages = '\n\n### 🐳 Docker Images\n\n' +
-              '- **TLDraw**: `ghcr.io/${{ github.repository }}/tldraw:' + version + '`\n' +
-              '- **Latest**: `ghcr.io/${{ github.repository }}/tldraw:latest`\n\n' +
-              '### 🚀 Quick Start with Docker\n\n' +
-              '```bash\n' +
-              '# Pull the latest images\n' +
-              'docker pull ghcr.io/${{ github.repository }}/tldraw:' + version + '\n\n' +
-              '# Or use docker-compose with specific version\n' +
-              'git clone https://github.com/${{ github.repository }}.git\n' +
-              'cd diagram-tools-hub\n' +
-              'git checkout ' + version + '\n' +
-              './manage-config.sh start\n' +
-              '```\n';
-            
-            const updatedBody = body + dockerImages;
-            
-            await github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release.id,
-              body: updatedBody
-            });
-
-      - name: Notify success
-        if: success()
-        run: |
-          echo "🎉 Release ${{ steps.normalize_version.outputs.normalized_version }} created successfully!"
-          echo "📦 Docker images built and pushed: ${{ steps.meta.outputs.tags }}"
-          echo "🔗 Release URL: ${{ steps.create_release.outputs.html_url }}" 
