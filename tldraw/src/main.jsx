@@ -183,14 +183,18 @@ const SECONDARY_TOOLS = [
 // Inline stylesheet for the quick-pick panel. Lives in the component so
 // it's self-contained; React reconciles a single <style> tag across renders.
 //
-// Theme-awareness via color-mix(): mixes tldraw's --color-text (black in
-// light, white in dark) at low alpha with transparent. Same rule produces
-// a subtle darken in light mode and a subtle lighten in dark mode — no
-// hard-coded rgba values that fail in one of the themes.
+// Theme-awareness via `currentColor`: tldraw sets the appropriate text color
+// on the menu container per theme (black-ish in light, white-ish in dark).
+// We INHERIT — never hard-code — so the icons, text, hover backgrounds, and
+// borders all flip with the theme automatically. The one rule that locked
+// us into black-on-black before was anchoring to var(--color-text, #1d1d1d):
+// when tldraw's actual var name differs (which it does on v5), the #1d1d1d
+// fallback kicked in for dark mode → invisible.
 const QUICKPICK_CSS = `
 .qp-root {
     padding: 10px 10px 6px;
     min-width: 220px;
+    /* color: inherit from menu container — tldraw sets this per theme. */
 }
 .qp-swatches {
     display: grid;
@@ -202,7 +206,7 @@ const QUICKPICK_CSS = `
     aspect-ratio: 1 / 1;
     width: 100%;
     border-radius: 50%;
-    border: 1px solid color-mix(in srgb, var(--color-text, #1d1d1d) 12%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     cursor: pointer;
     padding: 0;
@@ -218,8 +222,8 @@ const QUICKPICK_CSS = `
 }
 
 /* Primary tools: Draw / Erase / Select. Larger pills with icon + label.
-   Subtle styling that defers to tldraw's chrome; theme-aware hover via
-   color-mix instead of hard-coded rgba so dark mode renders sensibly. */
+   All colors derived from currentColor — inherits from tldraw's menu
+   container, which is set per theme. Same CSS, both themes render. */
 .qp-tools-primary {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -231,8 +235,8 @@ const QUICKPICK_CSS = `
     padding: 7px 8px;
     border-radius: 8px;
     border: 1px solid transparent;
-    background: color-mix(in srgb, var(--color-text, #1d1d1d) 4%, transparent);
-    color: var(--color-text, #1d1d1d);
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    color: inherit;
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
@@ -245,28 +249,30 @@ const QUICKPICK_CSS = `
     transition: background 0.08s ease-out, border-color 0.08s ease-out;
 }
 .qp-pill:hover {
-    background: color-mix(in srgb, var(--color-text, #1d1d1d) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-text, #1d1d1d) 8%, transparent);
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    border-color: color-mix(in srgb, currentColor 10%, transparent);
 }
 .qp-pill:active {
-    background: color-mix(in srgb, var(--color-text, #1d1d1d) 14%, transparent);
+    background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .qp-pill:focus-visible {
     outline: 2px solid var(--color-selected, #3b82f6);
     outline-offset: 1px;
 }
-.qp-pill .tlui-icon {
+.qp-pill .tlui-icon,
+.qp-pill svg {
     width: 16px;
     height: 16px;
     flex: 0 0 auto;
+    color: inherit;
+    fill: currentColor;
 }
 .qp-pill-label {
     flex: 0 1 auto;
 }
 
 /* Secondary tools: text / arrow / line / laser / rectangle / ellipse.
-   3-column grid of icon-only square buttons. Compact; same hover/focus
-   treatment as the primary pills. */
+   3-column grid of icon-only square buttons. Same theme-aware treatment. */
 .qp-tools-secondary {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -279,8 +285,8 @@ const QUICKPICK_CSS = `
     padding: 0;
     border-radius: 7px;
     border: 1px solid transparent;
-    background: color-mix(in srgb, var(--color-text, #1d1d1d) 4%, transparent);
-    color: var(--color-text, #1d1d1d);
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    color: inherit;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -288,19 +294,22 @@ const QUICKPICK_CSS = `
     transition: background 0.08s ease-out, border-color 0.08s ease-out;
 }
 .qp-square:hover {
-    background: color-mix(in srgb, var(--color-text, #1d1d1d) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-text, #1d1d1d) 8%, transparent);
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    border-color: color-mix(in srgb, currentColor 10%, transparent);
 }
 .qp-square:active {
-    background: color-mix(in srgb, var(--color-text, #1d1d1d) 14%, transparent);
+    background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .qp-square:focus-visible {
     outline: 2px solid var(--color-selected, #3b82f6);
     outline-offset: 1px;
 }
-.qp-square .tlui-icon {
+.qp-square .tlui-icon,
+.qp-square svg {
     width: 18px;
     height: 18px;
+    color: inherit;
+    fill: currentColor;
 }
 `
 
