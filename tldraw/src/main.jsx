@@ -178,7 +178,9 @@ const QUICK_COLOR_HEX = {
 const QUICK_TOOLS_9 = [
     { id: 'draw',          icon: 'tool-pencil',    label: 'Draw' },
     { id: 'eraser',        icon: 'tool-eraser',    label: 'Erase' },
-    { id: 'select',        icon: 'tool-select',    label: 'Select' },
+    // Select uses the pointer icon (mouse cursor) in tldraw v5 — there's no
+    // 'tool-select'; that name renders as a placeholder question mark.
+    { id: 'select',        icon: 'tool-pointer',   label: 'Select' },
     { id: 'text',          icon: 'tool-text',      label: 'Text' },
     { id: 'arrow',         icon: 'tool-arrow',     label: 'Arrow' },
     { id: 'line',          icon: 'tool-line',      label: 'Line' },
@@ -317,35 +319,42 @@ function QuickPickContextMenu(props) {
     return (
         <DefaultContextMenu {...props}>
             <style>{QUICKPICK_CSS}</style>
-            <div className="qp-root">
-                <div className="qp-swatches" role="group" aria-label="Quick colors">
-                    {QUICK_COLORS_12.map((color) => (
-                        <button
-                            key={color}
-                            type="button"
-                            className="qp-swatch"
-                            style={{ background: QUICK_COLOR_HEX[color] }}
-                            title={color}
-                            aria-label={`Color ${color}`}
-                            onClick={() => pickColor(color)}
-                        />
-                    ))}
+            {/* Wrap custom JSX in TldrawUiMenuGroup so DefaultContextMenu's
+                child-shape expectation (menu primitives) is satisfied. Raw
+                divs as direct children break the menu context's setup,
+                which in turn prevents DefaultContextMenuContent from
+                rendering cut/copy/paste/export/etc. below. */}
+            <TldrawUiMenuGroup id="qp-quick">
+                <div className="qp-root">
+                    <div className="qp-swatches" role="group" aria-label="Quick colors">
+                        {QUICK_COLORS_12.map((color) => (
+                            <button
+                                key={color}
+                                type="button"
+                                className="qp-swatch"
+                                style={{ background: QUICK_COLOR_HEX[color] }}
+                                title={color}
+                                aria-label={`Color ${color}`}
+                                onClick={() => pickColor(color)}
+                            />
+                        ))}
+                    </div>
+                    <div className="qp-tools" role="group" aria-label="Quick tools">
+                        {QUICK_TOOLS_9.map((tool) => (
+                            <button
+                                key={tool.id}
+                                type="button"
+                                className="qp-tool"
+                                title={tool.label}
+                                aria-label={tool.label}
+                                onClick={() => dispatchTool(tool.id)}
+                            >
+                                <TldrawUiIcon icon={tool.icon} />
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <div className="qp-tools" role="group" aria-label="Quick tools">
-                    {QUICK_TOOLS_9.map((tool) => (
-                        <button
-                            key={tool.id}
-                            type="button"
-                            className="qp-tool"
-                            title={tool.label}
-                            aria-label={tool.label}
-                            onClick={() => dispatchTool(tool.id)}
-                        >
-                            <TldrawUiIcon icon={tool.icon} />
-                        </button>
-                    ))}
-                </div>
-            </div>
+            </TldrawUiMenuGroup>
             <TldrawUiMenuGroup id="qp-more">
                 <TldrawUiMenuSubmenu id="qp-more-tools" label="More tools">
                     <TldrawUiMenuItem
