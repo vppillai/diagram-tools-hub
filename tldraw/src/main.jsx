@@ -317,7 +317,7 @@ function QuickPickContextMenu(props) {
     return (
         <DefaultContextMenu {...props}>
             <style>{QUICKPICK_CSS}</style>
-            <div className="qp-root" onPointerDown={(e) => e.stopPropagation()}>
+            <div className="qp-root">
                 <div className="qp-swatches" role="group" aria-label="Quick colors">
                     {QUICK_COLORS_12.map((color) => (
                         <button
