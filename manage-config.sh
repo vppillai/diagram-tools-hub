@@ -756,7 +756,7 @@ services:
     restart: unless-stopped
 
   # Whiteboard - low-latency, pen-optimized whiteboard (vppillai/whiteboard)
-  # Source is a git submodule pinned at v1.1.0 (./whiteboard/).
+  # Source is a git submodule pinned at v1.3.0 (./whiteboard/).
   # Built with BASE_PATH=/whiteboard/ so assets are prefixed correctly for the
   # sub-path mount; nginx strips the prefix on proxy_pass.
   whiteboard:
@@ -840,7 +840,7 @@ services:
     restart: unless-stopped
 
   # Whiteboard - low-latency, pen-optimized whiteboard (vppillai/whiteboard)
-  # Source is a git submodule pinned at v1.1.0 (./whiteboard/).
+  # Source is a git submodule pinned at v1.3.0 (./whiteboard/).
   # Built with BASE_PATH=/whiteboard/ so assets are prefixed correctly for the
   # sub-path mount; nginx strips the prefix on proxy_pass.
   whiteboard:

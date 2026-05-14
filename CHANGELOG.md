@@ -9,6 +9,32 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-05-14
+
+Submodule bump — picks up whiteboard `v1.1.0` → `v1.3.0` (skipping the v1.2.0 release; this DTH release rolls both whiteboard minors into a single deployment). The bundled `/whiteboard/` instance gains the entire v1.2 batch (text tool, dedicated Select tool, laser pointer, mouse synthetic pressure, idle / jiggle pen halo, double-Esc tool toggle) plus the v1.3 batch (Lasso → Select absorption with marquee + multi-select, whiteboard-native clipboard round-trip for strokes + texts). DTH proper is unchanged: same services, same networking, same env contract.
+
+Minor-bumped instead of patch because the bundled-tool UX expansion is substantial enough (two whiteboard minors worth) that calling it a v1.4.4 patch would understate it.
+
+### Changed
+
+- **Whiteboard submodule bumped to [v1.3.0](https://github.com/vppillai/whiteboard/releases/tag/v1.3.0).** Users of the bundled `/whiteboard/` instance now have everything from v1.2 + v1.3:
+
+  **From whiteboard v1.2.0:**
+  - **Text tool (`T`)** — multi-line text objects, mono / 12 px defaults, `Cmd/Ctrl+B/I/U` for bold / italic / underline. Right-click menu for font / size / color. Wrap-width via E/W edge drag.
+  - **Laser pointer (`L`)** — fading polyline trail for presentations. Color via curated palette; nothing persists.
+  - **Mouse-mode synthetic pressure** — velocity-shaped pressure for mouse strokes (faster = thinner), opt-in via settings.
+  - **Idle pen halo + jiggle-to-find** — pointer halo brightens after 5 s of inactivity or back-and-forth jiggle, helping Wacom Intuos users locate the cursor.
+  - **`Esc Esc` toggles Draw ↔ Select** within a 350 ms window.
+  - **Auto-switch to Select on image paste** so the pasted image can be repositioned immediately.
+
+  **From whiteboard v1.3.0 (BREAKING in the whiteboard interface; transparent to DTH):**
+  - **Lasso tool absorbed into Select (`V` or `S`).** Single, multi, and marquee selection all live in one tool now. `Cmd/Ctrl+A` selects every non-deleted object (strokes + images + texts). `Shift+click` toggles objects in / out of the selection. Marquee drag on empty canvas multi-selects. Drag any selected object → the whole group moves.
+  - **Whiteboard-native clipboard round-trip.** `Cmd/Ctrl+C` / `Cmd/Ctrl+X` writes both a transparent-background PNG and a structured `data-whiteboard-v1` JSON bundle. Pasting back inside the whiteboard restores strokes + texts as live vectors (relative layout preserved); pasting into Google Docs / Slack / Confluence still lands as PNG.
+  - **Universal `Cmd/Ctrl+V`** — image / text / whiteboard bundle, each routed to the right paste handler.
+
+  Storage upgrades in place — IDB schema reaches v4 (v2 added images, v3 added texts, v4 is a corrective re-upgrade that recovers users whose v3 upgrade silently missed the `texts` store). Existing stroke + image data is preserved across all upgrades. Existing DTH users have nothing to migrate on the DTH side; the upgrade happens transparently in the user's browser on first visit to `/whiteboard/` after pulling the new container.
+- **`manage-config.sh`** in-file compose template: the inline `# pinned at v1.1.0` comment next to the whiteboard service is now `# pinned at v1.3.0`. Cosmetic only — the submodule SHA recorded by `git submodule status` is the load-bearing reference; the generated `docker-compose.yml` is gitignored and regenerated from this template on the next `manage-config.sh` invocation.
+
 ## [1.4.3] — 2026-05-12
 
 Submodule bump only — picks up whiteboard `v1.0.0` → `v1.1.0` so the bundled `/whiteboard/` instance gains image paste / move / resize / rotate and the dedicated Select tool. DTH proper is unchanged: same services, same networking, same env contract.
