@@ -9,6 +9,34 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-05-14
+
+Submodule bump — picks up whiteboard `v1.3.0` → `v1.4.2`. The bundled `/whiteboard/` instance gains the v1.4 Shape tool (rectangle / ellipse / line / arrow), a comprehensive right-click menu overhaul (icon-only pills with hover tooltips, shared swatch palette with custom-color "+" and ×-delete, pinned-menu persistence across sessions), a Factory Reset button in the settings panel (recovery from stuck IDB / service-worker states), plus two follow-up patches (empty-text guard, factory-reset URL cleanup). DTH proper is unchanged: same services, same networking, same env contract.
+
+### Changed
+
+- **Whiteboard submodule bumped to [v1.4.2](https://github.com/vppillai/whiteboard/releases/tag/v1.4.2).** Users of the bundled `/whiteboard/` instance gain:
+
+  **From whiteboard v1.4.0:**
+  - **Shape tool** — drag-to-create rectangle / ellipse / line / arrow. One unified tool with four sub-modes (`R` / `O` / `A` / `L`); Shift constrains (square / circle / 45° lines). Sticky color, stroke width, fill toggle, fill-opacity slider. Lines and arrows use endpoint-based resize so dragging past origin flips direction naturally. Round-trips through clipboard + PNG / SVG / PDF exports as native vector primitives.
+  - **Right-click menu overhaul** — icon-only pills with hover tooltips revealing the name + shortcut. Tool row split into two rows of three. Shared swatch palette (curated colors + custom + "+") across every COLOR section. Hover-revealed × badge deletes custom swatches inline. Pinned menu persists across browser sessions (localStorage), survives Esc, auto-rebuilds when settings change, and auto-reappears at its anchor on page refresh. Tool / selection / settings changes broadcast to the pinned menu's contextual section.
+  - **Factory Reset** — destructive recovery in the settings panel that wipes all per-origin browser state (IndexedDB, localStorage, caches, service workers) and reloads. Replaces the DevTools-console snippet that was the previous recovery path for stuck states (multi-tab IDB-upgrade blocks, stale service workers).
+  - **Block-eraser scope** — wipe mode remains strokes-only (pixel-cut); object mode tap deletes any kind (strokes / shapes / texts / images). Prevents the prior "erasing strokes off an image also nukes the image" footgun.
+  - **Fine-grained text size** — `Cmd/Ctrl+Shift+,` / `Cmd/Ctrl+Shift+.` decrement / increment the active text's font size by 1 px. Works in both edit mode and Select mode.
+  - **Keymap rebinds** — `R` / `O` / `A` / `L` activate the Shape tool sub-modes; `P` is laser pointer (was `L`); `Shift+P` is pen-default brush (was `P`); `Shift+C` opens the color picker (was `C`); `Shift+O` opens the options menu (was `O`).
+
+  **From whiteboard v1.4.1:**
+  - **Empty-text guard** — whitespace-only text objects no longer get persisted; pressing Esc on an empty new-text discards instead of saving.
+
+  **From whiteboard v1.4.2:**
+  - **Factory-reset URL cleanup** — the cache-busting `?factoryReset=…` query param is removed from the URL after the post-reset reload so subsequent navigation / share isn't carrying a one-shot diagnostic flag.
+
+  IDB schema upgrades automatically from v4 → v5 (additive: new `shapes` store; existing strokes / images / texts data is untouched). The upgrade now surfaces the multi-tab-blocked case loudly via a console warning instead of hanging boot silently.
+
+### Notes
+
+- 📜 **TLDraw license reminder** — tldraw v5 (still bundled at the same version as v1.5.0) requires `TLDRAW_LICENSE_KEY` in `.env` for any deployment on a hostname OTHER than `localhost` / `127.0.0.1`. On non-localhost without a key, the tldraw canvas is blocked by a license-required overlay. A free WatermarkOnly key is available at [tldraw.dev/community/license](https://tldraw.dev/community/license); see [README.md → "TLDraw Licensing"](https://github.com/vppillai/diagram-tools-hub/blob/main/README.md#tldraw-licensing) for the full table of options. **The `.env.example` template now includes a commented `TLDRAW_LICENSE_KEY=` line** so the gap is harder to miss for new operators.
+
 ## [1.5.0] — 2026-05-14
 
 Submodule bump — picks up whiteboard `v1.1.0` → `v1.3.0` (skipping the v1.2.0 release; this DTH release rolls both whiteboard minors into a single deployment). The bundled `/whiteboard/` instance gains the entire v1.2 batch (text tool, dedicated Select tool, laser pointer, mouse synthetic pressure, idle / jiggle pen halo, double-Esc tool toggle) plus the v1.3 batch (Lasso → Select absorption with marquee + multi-select, whiteboard-native clipboard round-trip for strokes + texts). DTH proper is unchanged: same services, same networking, same env contract.
