@@ -9,6 +9,14 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-05-15
+
+Submodule patch bump — picks up whiteboard `v1.4.2` → `v1.4.3`. Single-commit fix that defers a `clearFlow` reference in the tool menu so opening / restoring the menu doesn't trip a Temporal Dead Zone `ReferenceError`. The crash was reachable on first right-click after page load OR on the auto-reopen of a pinned menu after refresh. DTH proper is unchanged.
+
+### Fixed
+
+- **Whiteboard submodule bumped to [v1.4.3](https://github.com/vppillai/whiteboard/releases/tag/v1.4.3).** Pulls in the TDZ crash fix in the right-click tool menu — `clearFlow` is now read lazily inside the click handler instead of eagerly at menu-content build time, so it's never accessed before its `const` binding initializes.
+
 ## [1.6.0] — 2026-05-14
 
 Submodule bump — picks up whiteboard `v1.3.0` → `v1.4.2`. The bundled `/whiteboard/` instance gains the v1.4 Shape tool (rectangle / ellipse / line / arrow), a comprehensive right-click menu overhaul (icon-only pills with hover tooltips, shared swatch palette with custom-color "+" and ×-delete, pinned-menu persistence across sessions), a Factory Reset button in the settings panel (recovery from stuck IDB / service-worker states), plus two follow-up patches (empty-text guard, factory-reset URL cleanup). DTH proper is unchanged: same services, same networking, same env contract.
