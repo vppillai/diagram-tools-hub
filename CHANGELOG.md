@@ -9,6 +9,39 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.6.2] — 2026-05-20
+
+Submodule patch bump — picks up whiteboard `v1.4.3` → `v1.4.4`. A multi-axis hardening release on the bundled whiteboard: small bug fixes (marquee deselect now rebuilds the pinned tool menu; the pinned menu remembers its dragged position across reloads; factory-reset URL clear runs before any awaitable boot step), op-pipeline cleanup (Select + Text deletes funnel through `applyOp` for a single CRDT-ready mutation surface), two perf wins (per-`TextObject` measurement cache eliminates per-frame greedy word-wrap; pen high-vis halo pre-renders to an offscreen canvas keyed by ink color so jiggle-hunt frames are one `drawImage` instead of `shadowBlur`), server-side security hardening on the whiteboard container's standalone Bun server, and the standard OSS community-health files in whiteboard's repo. DTH proper is unchanged: same services, same networking, same env contract.
+
+### Changed
+
+- **Whiteboard submodule bumped to [v1.4.4](https://github.com/vppillai/whiteboard/releases/tag/v1.4.4).** Users of the bundled `/whiteboard/` instance gain:
+
+  **Fixed**
+  - **Marquee deselect rebuilds the pinned tool menu.** Click empty canvas after a pinned-menu selection — the contextual section drops immediately, not on the next interaction. (Was the one selection-mutation site that escaped the v1.4 `setSelection` route + `onSelectionChange` hook.)
+  - **Pinned tool menu persists its dragged position across reloads.** Drag the pinned menu by its header, refresh: it reopens where you put it (was: snapped back to the original right-click anchor, ignoring the drag).
+  - **Factory-reset URL clear runs first in `main()`** so a boot exception in any later step doesn't strand `?factoryReset=…` in the URL.
+  - **HMR listener-leak closure** — `viewstate` + `settings` pagehide listeners now have explicit teardown wired into `main.ts`'s cleanup registry.
+
+  **Architecture (invisible to users; relevant to forks)**
+  - **Select-tool and Text-tool deletes funnel through `applyOp(op); pushOp(op)`** — collapses four parallel mutation paths into the canonical pattern already used by `erasercallbacks.ts`. Single mutation surface that's CRDT-binding-friendly when sharing returns per ADR 0012.
+
+  **Performance**
+  - **Per-`TextObject` measurement cache** — committed re-renders no longer re-run greedy word-wrap + per-token `ctx.measureText` for every visible wrapped text on every dirty frame. WeakMap-keyed; invalidated in the `edit-text` op handler. Settings-slider drags on text-heavy boards feel meaningfully snappier.
+  - **Pen high-vis halo (idle + jiggle-hunt) pre-rendered.** Bloomed-ring rendering used to do `shadowBlur=14` + two arc strokes per hover frame; now drawn once to an offscreen canvas keyed by `(color, dpr)` and `drawImage`'d per hover frame. `shadowBlur` is the Canvas2D fast-path-buster at 200 Hz on Wacom Intuos.
+
+  **Security (whiteboard standalone server)**
+  - **Baseline security headers on every response** — CSP (`default-src 'self'`, `frame-ancestors 'none'`, `script-src 'self'`, etc.), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy`. Set by whiteboard's Bun static server. In a DTH deployment these flow through Nginx to clients on `/whiteboard/` — operators with custom Nginx security headers may want to verify the merged response set.
+  - **Application-layer path-traversal guard.** Previous code relied on Bun's URL parser normalizing `..` segments before `Bun.file()` saw them; now an explicit `safeResolve` decodes + verifies the resolved path stays inside the dist root.
+  - **`?perftest=…` URL params gated behind `import.meta.env.DEV`** — production bundles tree-shake the perftest harness, closing a phishing-link-to-victim-DoS vector.
+
+  **Added (community)**
+  - **OSS community-health files in whiteboard's repo** — `SECURITY.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `.github/ISSUE_TEMPLATE/` (bug + feature, with a Tenet-alignment section that keeps SPEC § 0 visible in the request flow), `.github/PULL_REQUEST_TEMPLATE.md` mirroring `docs/process.md`. Doesn't change DTH directly but matters for any operator filing a whiteboard bug upstream.
+
+### Notes
+
+- 📜 **TLDraw license reminder unchanged.** Tldraw v5 still requires `TLDRAW_LICENSE_KEY` in `.env` for any deployment on a hostname other than `localhost` / `127.0.0.1`; a free WatermarkOnly key is available at [tldraw.dev/community/license](https://tldraw.dev/community/license). See README → "TLDraw Licensing" for the option table.
+
 ## [1.6.1] — 2026-05-15
 
 Submodule patch bump — picks up whiteboard `v1.4.2` → `v1.4.3`. Single-commit fix that defers a `clearFlow` reference in the tool menu so opening / restoring the menu doesn't trip a Temporal Dead Zone `ReferenceError`. The crash was reachable on first right-click after page load OR on the auto-reopen of a pinned menu after refresh. DTH proper is unchanged.
