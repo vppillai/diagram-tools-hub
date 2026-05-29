@@ -9,6 +9,40 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.6.3] — 2026-05-28
+
+Submodule patch bump — picks up whiteboard `v1.4.4` → `v1.4.5`. A cleanup & frontend pass (milestone-gated M0–M4, each change adversarially verified before landing) on the bundled whiteboard: keyboard focus rings, a documented z-index scale that fixes a toast/popover stacking collision, export failures that now surface as a toast instead of failing silently, a pen-friendly custom-swatch delete fix, plus internal consolidation (shared swatch DOM factories, stroke move-step extraction, scoped settings rebuild, dead-code removal) and doc accuracy. DTH proper is unchanged: same services, same networking, same env contract.
+
+### Changed
+
+- **Whiteboard submodule bumped to [v1.4.5](https://github.com/vppillai/whiteboard/releases/tag/v1.4.5).** Users of the bundled `/whiteboard/` instance gain:
+
+  **Added**
+  - **Keyboard focus rings.** A `:focus-visible` accent ring (`2px var(--accent)`, 2px offset) on the right-click menu, popovers, and settings panel — keyboard-only, so it stays invisible for mouse + pen. Replaces an `outline: none` that had suppressed keyboard focus indication on the tool-pill controls.
+  - **Export failure feedback.** A failed export (null 2D context, `toBlob` failure, image-decode / file-read error) now surfaces a toast via a new `onError` hook instead of silently dismissing the popover — previously a swallowed promise rejection that read as success. First dispatcher-level export tests added.
+
+  **Fixed**
+  - **Toast / popover z-index collision.** Both sat at `z-index: 1500`; a documented `--z-*` stacking scale (`hint < panel < pill < hud < popover < toast < banner`) now raises toasts above an open menu (`1600 > 1500`).
+  - **Pen-friendly custom-swatch delete.** The × delete badge's enlarged hit target was live while the badge was hidden, so a click *near* a custom swatch could fire delete instead of picking the neighbour; the enlarged target is now gated to the revealed (hover / focus) state.
+  - **Documentation accuracy.** README test count (→ 232), the `/health` response-body example (after the `stage` field was dropped), and the deployment-doc health snippet.
+
+  **Changed (internal; invisible to users, relevant to forks)**
+  - Shared swatch DOM factories (`makeColorSwatch` / `makeAddSwatchTile`) replace near-identical color-picker and settings-palette implementations (byte-identical class output per variant).
+  - `_applyStrokeMoveStep` extraction dedups the Select tool's single-drag and multi-drag move-delta block (+ unit tests).
+  - Settings-panel custom-swatch section is now fingerprint-guarded — rebuilds only when the swatch list changes (was rebuilding ≈60×/s during slider drags).
+  - Dead-code / consistency: removed unused `insert()` from `TextStore` / `ShapeStore`, centralized `makeImageId` into `ids.ts`, dropped the stale `stage` field from `/health`.
+  - Honest static imports on the clipboard PNG path (warning- and shim-free production build); production builds no longer ship source maps; `main.ts` `root` listeners now register teardown callbacks.
+
+  **Tests**
+  - +6 unit tests (**232** total): export-dispatcher error / empty-board paths and `_applyStrokeMoveStep` arithmetic + translation coverage.
+
+  **Deferred**
+  - Two perf items (boot image-decode cap, per-frame stroke-path allocation) deferred pending on-device pen-to-photon measurement on the Wacom Intuos (`perftest.ts` can't measure pen-to-photon).
+
+### Notes
+
+- 📜 **TLDraw license reminder unchanged.** Tldraw v5 still requires `TLDRAW_LICENSE_KEY` in `.env` for any deployment on a hostname other than `localhost` / `127.0.0.1`; a free WatermarkOnly key is available at [tldraw.dev/community/license](https://tldraw.dev/community/license). See README → "TLDraw Licensing" for the option table.
+
 ## [1.6.2] — 2026-05-20
 
 Submodule patch bump — picks up whiteboard `v1.4.3` → `v1.4.4`. A multi-axis hardening release on the bundled whiteboard: small bug fixes (marquee deselect now rebuilds the pinned tool menu; the pinned menu remembers its dragged position across reloads; factory-reset URL clear runs before any awaitable boot step), op-pipeline cleanup (Select + Text deletes funnel through `applyOp` for a single CRDT-ready mutation surface), two perf wins (per-`TextObject` measurement cache eliminates per-frame greedy word-wrap; pen high-vis halo pre-renders to an offscreen canvas keyed by ink color so jiggle-hunt frames are one `drawImage` instead of `shadowBlur`), server-side security hardening on the whiteboard container's standalone Bun server, and the standard OSS community-health files in whiteboard's repo. DTH proper is unchanged: same services, same networking, same env contract.
