@@ -9,6 +9,45 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-06-11
+
+Submodule minor bump — picks up whiteboard `v1.4.5` → `v1.5.0`, spanning the `v1.4.6` bug-fix pass and the `v1.5.0` review-roadmap completion. The bundled whiteboard gains group-gesture composite undo, a CI-gated Playwright e2e safety net, dialog/pill accessibility, an SVG-export XSS fix plus ten other verified bug fixes, and CI/Docker supply-chain hardening — alongside an internal store + Select-tool unification that lands with zero behavior change. DTH proper is unchanged: same services, same networking, same env contract.
+
+### Changed
+
+- **Whiteboard submodule bumped to [v1.5.0](https://github.com/vppillai/whiteboard/releases/tag/v1.5.0)** (over [v1.4.6](https://github.com/vppillai/whiteboard/releases/tag/v1.4.6)). Users of the bundled `/whiteboard/` instance gain:
+
+  **Added**
+  - **Group delete and group paste undo in one step.** A 30-object delete previously took 30 Cmd+Z presses; `delete-many` (extended with stroke ids) and a new `create-many` make every group gesture one op / one undo step — and one transaction per gesture for the deferred sync layer.
+  - **Dialog & pill accessibility.** The settings side panel declares `aria-modal` and moves focus into the dialog on open; options-menu pills gain `aria-pressed`.
+  - **Playwright e2e smoke suite (new required CI job).** A new `apps/e2e` workspace drives the production build through the real Bun static server (same binary + CSP as deploys): clean boot, pen draw, undo/redo, eraser, select-drag, PNG export, and IndexedDB reload persistence — covering the interactive paths the unit harness structurally cannot reach.
+
+  **Fixed** (the v1.4.6 bug-fix pass — eleven verified defects)
+  - **Distraction-free mode** now actually hides the tool/help pills (the `F`-toggle CSS targeted class names no element carried).
+  - **Tools track live `devicePixelRatio`** — in-flight strokes, pen halo, and the grid no longer render at a stale ratio after a monitor drag or OS-scaling change.
+  - **IndexedDB open-failure recovery** — a failed open no longer poisons the cached promise and permanently disables persistence; it un-caches, retries, and invalidates on browser-initiated close.
+  - **Switching tools mid-text-drag commits the move** (previously neither persisted nor undoable; it snapped back on reload).
+  - **Settings inputs keep their keys** — Esc / `?` inside a settings field no longer leak to the global side-panel / help-overlay handlers.
+  - **"Reset to defaults" resets everything** — 14 newer scalar settings (text font/size/style, shape, laser color, input toggles) were silently kept.
+  - **Rotation-aware paste origin** (paste lands rotated objects at the cursor) and **`NaN` rotation no longer masked** as "no rotation".
+  - **Toast fixes** — rapid toasts no longer cut each other off; the destructive-confirm toast only exists in the DOM while visible.
+  - **Laser-trail expiry is O(n)** — a single-splice cull replaces per-sample `shift()` bursts.
+
+  **Security**
+  - **SVG export escapes the stroke `fill`** — the one unescaped user-data sink, where a crafted `brush.color` in a pasted clipboard bundle could break out of the attribute and execute when the exported file was opened standalone; `brush.color` is now validated (ink token or hex) at the paste boundary, closing the class.
+  - **CI / deploy supply-chain hardening** — every GitHub Action pinned to a full commit SHA, `bun-version` pinned, `ci.yml` runs with a read-only token, the Docker base image digest-pinned, and the container drops all capabilities, blocks privilege escalation, and mounts its root filesystem read-only.
+
+  **Changed (internal; invisible to users, relevant to forks)**
+  - **`ObjectStore<T>` unification** — the four object stores' drifted vocabularies (`save`/`update`/`insert`/`hardDelete`) collapse behind one generic interface, so the future Y.Doc sync layer becomes one adapter, not four. Zero behavior change.
+  - **`ObjectBehavior<T>` vtable (ADR 0014)** — the Select tool's six 4-way kind-dispatch sites and four per-kind drag-commit helpers collapse behind a compile-time-exhaustive registry; rotation geometry consolidates into `geom.ts`; `select.ts` goes 2,641 → 1,842 lines with identical op sequences. Popover icons are DOM-built (last `innerHTML` SVGs removed).
+
+  **Tests**
+  - +34 unit tests in v1.4.6 (**266** total); the Select refactor's **274** unit tests pass unmodified, plus the new **6/6** Playwright e2e suite as a required CI job.
+
+### Notes
+
+- 📜 **TLDraw license reminder unchanged.** Tldraw v5 still requires `TLDRAW_LICENSE_KEY` in `.env` for any deployment on a hostname other than `localhost` / `127.0.0.1`; a free WatermarkOnly key is available at [tldraw.dev/community/license](https://tldraw.dev/community/license). See README → "TLDraw Licensing" for the option table.
+
 ## [1.6.3] — 2026-05-28
 
 Submodule patch bump — picks up whiteboard `v1.4.4` → `v1.4.5`. A cleanup & frontend pass (milestone-gated M0–M4, each change adversarially verified before landing) on the bundled whiteboard: keyboard focus rings, a documented z-index scale that fixes a toast/popover stacking collision, export failures that now surface as a toast instead of failing silently, a pen-friendly custom-swatch delete fix, plus internal consolidation (shared swatch DOM factories, stroke move-step extraction, scoped settings rebuild, dead-code removal) and doc accuracy. DTH proper is unchanged: same services, same networking, same env contract.
