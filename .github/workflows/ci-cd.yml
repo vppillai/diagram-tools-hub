@@ -29,7 +29,7 @@ jobs:
         service: [tldraw, whiteboard]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # whiteboard/ is a git submodule pinned to a release tag of
           # vppillai/whiteboard. Without this, docker build in the
@@ -70,7 +70,7 @@ jobs:
               BASE_PATH=/whiteboard/
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # whiteboard/ is a git submodule pinned to a release tag of
           # vppillai/whiteboard; build-push needs the source at runtime.

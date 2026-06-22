@@ -59,7 +59,7 @@ jobs:
       version: ${{ steps.normalize.outputs.version }}
     steps:
       - name: Checkout (full history + submodules)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
@@ -186,7 +186,7 @@ jobs:
               BASE_PATH=/whiteboard/
     steps:
       - name: Checkout at the new tag (with submodules)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.create-release.outputs.version }}
           submodules: recursive
