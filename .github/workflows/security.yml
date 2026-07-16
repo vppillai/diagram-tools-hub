@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # whiteboard/ is a submodule; without recursive checkout Trivy
           # would scan an empty directory and silently miss its dep tree.
