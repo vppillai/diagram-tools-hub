@@ -38,14 +38,14 @@
                 radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.15) 0%, transparent 50%);
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
             padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             color: var(--text-primary);
-            overflow: hidden;
+            overflow-y: auto;
         }
 
         .background-pattern {
@@ -68,7 +68,7 @@
         .container {
             max-width: 1400px;
             width: 95%;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0 auto;
             padding: 1rem 1.5rem;
             position: relative;
@@ -168,16 +168,16 @@
 
         .tools-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 1.5rem;
         }
 
         .tool-card {
             background: var(--card-bg);
             backdrop-filter: blur(20px);
             border-radius: var(--border-radius-lg);
-            padding: 2rem;
+            padding: 1.5rem 1.25rem;
             text-align: center;
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             border: 1px solid var(--card-border);
@@ -210,9 +210,9 @@
         }
 
         .tool-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 1.5rem;
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1rem;
             border-radius: var(--border-radius);
             display: flex;
             align-items: center;
@@ -280,30 +280,31 @@
         }
 
         .tool-card h2 {
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             font-weight: 600;
-            margin-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
             color: var(--text-primary);
         }
 
         .tool-card p {
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.25rem;
             color: var(--text-secondary);
-            line-height: 1.5;
-            font-size: 0.95rem;
+            line-height: 1.45;
+            font-size: 0.9rem;
         }
 
         .tool-buttons {
             display: flex;
-            gap: 1rem;
+            flex-wrap: wrap;
+            gap: 0.6rem;
             justify-content: center;
         }
 
         .btn {
-            padding: 0.875rem 2rem;
+            padding: 0.7rem 1.25rem;
             border: none;
             border-radius: 12px;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -367,15 +368,14 @@
         }
 
         .status-grid {
-            display: inline-grid;
-            /* inline-grid is content-sized; the parent .status uses text-align:center
-             * to horizontally center the grid. Bump the column count when adding
-             * more tools — auto-fit collapses with inline-grid (no parent width
-             * to expand into) and would stack items vertically. */
-            grid-template-columns: repeat(4, 1fr);
-            gap: 2rem;
+            /* Content-sized flex row centred by the parent's text-align; wraps
+             * for any number of items (external tools are appended at runtime). */
+            display: inline-flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem 2.5rem;
             margin-top: 0.5rem;
-            padding: 1.5rem;
+            padding: 1.25rem 1.5rem;
             background: var(--card-bg);
             border-radius: var(--border-radius);
             border: 1px solid var(--card-border);
@@ -443,7 +443,7 @@
         @media (max-width: 768px) {
             .container {
                 padding: 0.75rem 1rem;
-                height: 100vh;
+                min-height: 100vh;
                 justify-content: space-between;
             }
 
@@ -462,8 +462,7 @@
             }
 
             .status-grid {
-                grid-template-columns: repeat(4, 1fr);
-                gap: 1rem;
+                gap: 1rem 1.5rem;
                 padding: 1rem;
             }
 
@@ -713,16 +712,21 @@
         // by manage-config.sh into external-tools.js). Same markup as the
         // built-in cards; not part of the status panel (cross-origin probes
         // are unreliable and would reopen the h2 connection-coalescing issue).
+        function externalTools() {
+            return (Array.isArray(window.EXTERNAL_TOOLS) ? window.EXTERNAL_TOOLS : [])
+                .filter(t => t && t.name && /^https?:\/\//i.test(t.url || ''))
+                .map((t, i) => ({ ...t, id: `external-${i}` }));
+        }
+
         function renderExternalTools() {
-            const tools = Array.isArray(window.EXTERNAL_TOOLS) ? window.EXTERNAL_TOOLS : [];
+            const tools = externalTools();
             const grid = document.querySelector('.tools-grid');
+            const statusGrid = document.querySelector('.status-grid');
             if (!grid) return;
             const linkIcon = '<svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>';
             const launchIcon = '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>';
 
             for (const tool of tools) {
-                if (!tool || !tool.name || !/^https?:\/\//i.test(tool.url || '')) continue;
-
                 const card = document.createElement('div');
                 card.className = 'tool-card';
 
@@ -759,6 +763,18 @@
 
                 card.append(icon, title, desc, buttons);
                 grid.appendChild(card);
+
+                if (statusGrid) {
+                    const item = document.createElement('div');
+                    item.className = 'status-item';
+                    const dot = document.createElement('span');
+                    dot.className = 'status-indicator loading';
+                    dot.id = `${tool.id}-status`;
+                    const label = document.createElement('span');
+                    label.textContent = tool.name;
+                    item.append(dot, label);
+                    statusGrid.appendChild(item);
+                }
             }
         }
 
@@ -788,7 +804,11 @@
                 { name: 'drawio', path: '/drawio/' },
                 { name: 'excalidraw', path: '/excalidraw/' },
                 { name: 'tldraw', path: '/tldraw/' },
-                { name: 'whiteboard', path: '/whiteboard/' }
+                { name: 'whiteboard', path: '/whiteboard/' },
+                // External tools are cross-origin: probe with no-cors, which
+                // yields an opaque response (status 0) when reachable and
+                // throws when not. Any HTTP answer counts as online.
+                ...externalTools().map(t => ({ name: t.id, path: t.url, external: true }))
             ];
 
             const statusPromises = services.map(async (service) => {
@@ -801,12 +821,13 @@
 
                     const response = await fetch(service.path, {
                         method: 'HEAD',
+                        mode: service.external ? 'no-cors' : 'same-origin',
                         signal: controller.signal
                     });
 
                     clearTimeout(timeoutId);
 
-                    if (response.ok) {
+                    if (response.ok || (service.external && response.type === 'opaque')) {
                         indicator.className = 'status-indicator';
                         return { service: service.name, status: 'online' };
                     } else {
