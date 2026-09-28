@@ -8,6 +8,8 @@
 #   SSL_PROTOCOLS_BLOCK - empty (HTTP) or ssl_protocols/ciphers config
 #   SSL_CERT_BLOCK      - empty (HTTP) or ssl_certificate + key paths
 #   SECURITY_HEADERS    - empty (HTTP) or HSTS + nosniff + Referrer-Policy
+#   HOST_GUARD_MAP      - empty (HTTP) or a map marking Host values we do not serve
+#   HOST_GUARD          - empty (HTTP) or "return 421" for those Host values
 #
 # (Variable names above are intentionally written without the dollar-brace
 # syntax so envsubst doesn't substitute them inside the comment block —
@@ -26,7 +28,7 @@ events {
 http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
-${SSL_PROTOCOLS_BLOCK}
+${SSL_PROTOCOLS_BLOCK}${HOST_GUARD_MAP}
     upstream drawio_backend      { server drawio:8080; }
     upstream excalidraw_backend  { server excalidraw:80; }
     upstream tldraw_backend      { server tldraw:3000; }
@@ -36,7 +38,7 @@ ${SSL_PROTOCOLS_BLOCK}
     server {
         ${LISTEN_DIRECTIVE}
         server_name _;
-${SSL_CERT_BLOCK}${SECURITY_HEADERS}
+${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
         # Main hub landing page.
         location / {
             root /usr/share/nginx/html;

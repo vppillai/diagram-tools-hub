@@ -633,12 +633,23 @@ render_nginx_config() {
             export SSL_PROTOCOLS_BLOCK=$'\n    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256;\n    ssl_prefer_server_ciphers off;\n    ssl_session_cache shared:SSL:10m;\n    ssl_session_timeout 10m;\n'
             export SSL_CERT_BLOCK=$'\n        ssl_certificate /etc/ssl/certs/cert.pem;\n        ssl_certificate_key /etc/ssl/private/key.pem;'
             export SECURITY_HEADERS=$'\n        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;\n        add_header X-Content-Type-Options nosniff always;\n        add_header X-XSS-Protection "1; mode=block" always;\n        add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n'
+            # HTTP/2 connection coalescing guard (RFC 9113 §9.1.2). A browser
+            # reuses an open h2 connection for ANY hostname the certificate
+            # covers that resolves to the same IP. When the hub shares an IP
+            # and a multi-SAN cert with another service behind an SNI router,
+            # that service's requests arrive here and get the hub page.
+            # Answering 421 makes the browser retry on a fresh connection
+            # (correct SNI) instead. Only SSL_DOMAIN and loopback are served.
+            export HOST_GUARD_MAP=$'\n    map $host $misdirected {\n        default      1;\n        localhost    0;\n        127.0.0.1    0;\n        "[::1]"      0;\n        '"${SSL_DOMAIN}"$'  0;\n    }\n'
+            export HOST_GUARD=$'\n        if ($misdirected) { return 421; }\n'
             ;;
         http|ci)
             export LISTEN_DIRECTIVE="listen 80;"
             export SSL_PROTOCOLS_BLOCK=""
             export SSL_CERT_BLOCK=""
             export SECURITY_HEADERS=""
+            export HOST_GUARD_MAP=""
+            export HOST_GUARD=""
             ;;
         *)
             log_error "Unknown nginx render mode: $mode"
@@ -646,18 +657,21 @@ render_nginx_config() {
             ;;
     esac
 
-    envsubst '${LISTEN_DIRECTIVE} ${SSL_PROTOCOLS_BLOCK} ${SSL_CERT_BLOCK} ${SECURITY_HEADERS}' \
+    envsubst '${LISTEN_DIRECTIVE} ${SSL_PROTOCOLS_BLOCK} ${SSL_CERT_BLOCK} ${SECURITY_HEADERS} ${HOST_GUARD_MAP} ${HOST_GUARD}' \
         < "$template" > "$out"
 
-    unset LISTEN_DIRECTIVE SSL_PROTOCOLS_BLOCK SSL_CERT_BLOCK SECURITY_HEADERS
+    unset LISTEN_DIRECTIVE SSL_PROTOCOLS_BLOCK SSL_CERT_BLOCK SECURITY_HEADERS HOST_GUARD_MAP HOST_GUARD
 }
 
-# Generate nginx configuration for CI builds. Renders the HTTP variant —
-# no SSL certs required, no docker-compose validation needed.
+# Generate nginx configuration without touching containers. Defaults to the
+# HTTP variant for CI builds (no SSL certs required); pass "https" to
+# re-render the production config in place, then `docker exec diagram-engine
+# nginx -s reload` picks it up with zero downtime.
 generate_nginx_config() {
-    log_info "Generating HTTP nginx configuration for CI build..."
-    render_nginx_config http
-    log_success "nginx.conf generated successfully for CI build!"
+    local mode="${1:-http}"
+    log_info "Generating ${mode} nginx configuration..."
+    render_nginx_config "$mode"
+    log_success "nginx.conf generated successfully (${mode})!"
 }
 
 cleanup_containers() {
@@ -1453,7 +1467,7 @@ case "$1" in
         http_only
         ;;
     generate-nginx-config)
-        generate_nginx_config
+        generate_nginx_config "$2"
         ;;
     cleanup)
         cleanup_containers
