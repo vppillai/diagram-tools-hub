@@ -9,6 +9,16 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Added
+
+- **External tools appear in the Service Status panel.** Each `EXTERNAL_TOOLS` entry gets a status dot next to the built-in ones. Cross-origin reachability is probed with a `no-cors` HEAD request: any HTTP answer counts as online, a network failure or 5 s timeout as offline.
+
+### Changed
+
+- **Compact landing-page grid.** Card minimum width 280 px → 200 px, tighter padding, smaller icon/heading/button sizes, so five tools fit on one row from about 1180 px wide (four cards get the same treatment). Below that, cards wrap and the buttons stack.
+- **Page scrolls when content is taller than the viewport.** `body`/`.container` used `height: 100vh; overflow: hidden`, which clipped anything below the fold with no scrollbar once a fifth card wrapped. Now `min-height: 100vh; overflow-y: auto`; layouts that fit are still vertically centred as before.
+- Status panel switched from a fixed four-column `inline-grid` to a wrapping `inline-flex` row, so it no longer needs a column-count bump when tools are added.
+
 ### Fixed
 
 - **Landing-page changes now reach returning users on the next load.** The hub served `index.html` and its sibling files with no `Cache-Control`, so browsers heuristically cached them for about 10% of the file's age (up to two weeks). `location /` now sends `Cache-Control: no-cache`; the browser revalidates by ETag and gets a 304 when nothing changed. Sub-app assets are unaffected.
