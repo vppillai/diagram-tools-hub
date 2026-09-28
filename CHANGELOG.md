@@ -9,6 +9,10 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Fixed
+
+- **Hub page served for a neighbouring service's hostname (HTTP/2 connection coalescing).** When the hub shares an IP and a multi-SAN certificate with another service behind an SNI-based TCP router, browsers reuse the hub's open HTTP/2 connection for the other hostname, and the hub's catch-all `server_name _` happily answered — users opening the other service saw the Diagram Tools Hub instead. In HTTPS mode the engine nginx now answers `421 Misdirected Request` for any `Host` other than `SSL_DOMAIN` (loopback exempt), which per RFC 9113 §9.1.2 makes the browser retry on a fresh connection with the right SNI. `manage-config.sh generate-nginx-config` accepts an optional `https` mode so the production config can be re-rendered and hot-reloaded without a restart.
+
 ## [1.7.0] — 2026-06-11
 
 Submodule minor bump — picks up whiteboard `v1.4.5` → `v1.5.0`, spanning the `v1.4.6` bug-fix pass and the `v1.5.0` review-roadmap completion. The bundled whiteboard gains group-gesture composite undo, a CI-gated Playwright e2e safety net, dialog/pill accessibility, an SVG-export XSS fix plus ten other verified bug fixes, and CI/Docker supply-chain hardening — alongside an internal store + Select-tool unification that lands with zero behavior change. DTH proper is unchanged: same services, same networking, same env contract.
