@@ -9,6 +9,14 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable external tool cards on the landing page.** New optional `EXTERNAL_TOOLS` in `.env` (`Name|URL|Description[|LogoURL]`, entries separated by `;`) adds cards for services that live outside the hub, such as a DocCode instance, using the same card markup and Launch / New Tab buttons as the built-in tools. `manage-config.sh` renders it to `engine/html/external-tools.js` alongside the nginx config; unset, the page is unchanged. External tools are deliberately not part of the Service Status panel.
+
+### Changed
+
+- `manage-config.sh` now sources `.env` as shell instead of `export $(... | xargs)`, so quoted values may contain spaces and `|`/`;`. Unquoted values without spaces behave as before.
+
 ### Fixed
 
 - **Hub page served for a neighbouring service's hostname (HTTP/2 connection coalescing).** When the hub shares an IP and a multi-SAN certificate with another service behind an SNI-based TCP router, browsers reuse the hub's open HTTP/2 connection for the other hostname, and the hub's catch-all `server_name _` happily answered — users opening the other service saw the Diagram Tools Hub instead. In HTTPS mode the engine nginx now answers `421 Misdirected Request` for any `Host` other than `SSL_DOMAIN` (loopback exempt), which per RFC 9113 §9.1.2 makes the browser retry on a fresh connection with the right SNI. `manage-config.sh generate-nginx-config` accepts an optional `https` mode so the production config can be re-rendered and hot-reloaded without a restart.
