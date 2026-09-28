@@ -9,6 +9,10 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Fixed
+
+- **Landing-page changes now reach returning users on the next load.** The hub served `index.html` and its sibling files with no `Cache-Control`, so browsers heuristically cached them for about 10% of the file's age (up to two weeks). `location /` now sends `Cache-Control: no-cache`; the browser revalidates by ETag and gets a 304 when nothing changed. Sub-app assets are unaffected.
+
 ### Added
 
 - **Configurable external tool cards on the landing page.** New optional `EXTERNAL_TOOLS` in `.env` (`Name|URL|Description[|LogoURL]`, entries separated by `;`) adds cards for services that live outside the hub, such as a DocCode instance, using the same card markup and Launch / New Tab buttons as the built-in tools. `manage-config.sh` renders it to `engine/html/external-tools.js` alongside the nginx config; unset, the page is unchanged. External tools are deliberately not part of the Service Status panel.

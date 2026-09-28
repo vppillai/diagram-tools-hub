@@ -39,10 +39,15 @@ ${SSL_PROTOCOLS_BLOCK}${HOST_GUARD_MAP}
         ${LISTEN_DIRECTIVE}
         server_name _;
 ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
-        # Main hub landing page.
+        # Main hub landing page. Un-versioned files (index.html,
+        # external-tools.js, logos), so "expires -1" emits Cache-Control:
+        # no-cache: the browser revalidates by ETag (fast 304 when unchanged)
+        # instead of heuristically caching for ~10% of Last-Modified age,
+        # which hid landing-page deploys from returning users for days.
         location / {
             root /usr/share/nginx/html;
             index index.html;
+            expires -1;
         }
 
         # ----- Draw.io ------------------------------------------------------
