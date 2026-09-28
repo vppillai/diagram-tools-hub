@@ -242,6 +242,12 @@
             padding: 12px;
         }
 
+        .tool-icon.external {
+            background: #fff;
+            padding: 12px;
+            color: #4f46e5;
+        }
+
 
 
         .tool-icon img {
@@ -701,7 +707,61 @@
         </div>
     </div>
 
+    <script src="external-tools.js"></script>
     <script>
+        // Cards for services outside the hub (EXTERNAL_TOOLS in .env, rendered
+        // by manage-config.sh into external-tools.js). Same markup as the
+        // built-in cards; not part of the status panel (cross-origin probes
+        // are unreliable and would reopen the h2 connection-coalescing issue).
+        function renderExternalTools() {
+            const tools = Array.isArray(window.EXTERNAL_TOOLS) ? window.EXTERNAL_TOOLS : [];
+            const grid = document.querySelector('.tools-grid');
+            if (!grid) return;
+            const linkIcon = '<svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>';
+            const launchIcon = '<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>';
+
+            for (const tool of tools) {
+                if (!tool || !tool.name || !/^https?:\/\//i.test(tool.url || '')) continue;
+
+                const card = document.createElement('div');
+                card.className = 'tool-card';
+
+                const icon = document.createElement('div');
+                icon.className = 'tool-icon external';
+                if (tool.logo) {
+                    const img = document.createElement('img');
+                    img.src = tool.logo;
+                    img.alt = `${tool.name} Logo`;
+                    img.addEventListener('error', () => { icon.innerHTML = linkIcon; });
+                    icon.appendChild(img);
+                } else {
+                    icon.innerHTML = linkIcon;
+                }
+
+                const title = document.createElement('h2');
+                title.textContent = tool.name;
+                const desc = document.createElement('p');
+                desc.textContent = tool.description || '';
+
+                const buttons = document.createElement('div');
+                buttons.className = 'tool-buttons';
+                const launch = document.createElement('a');
+                launch.href = tool.url;
+                launch.className = 'btn btn-primary';
+                launch.innerHTML = `Launch App ${launchIcon}`;
+                const newTab = document.createElement('a');
+                newTab.href = tool.url;
+                newTab.target = '_blank';
+                newTab.rel = 'noopener';
+                newTab.className = 'btn btn-secondary';
+                newTab.textContent = 'New Tab';
+                buttons.append(launch, newTab);
+
+                card.append(icon, title, desc, buttons);
+                grid.appendChild(card);
+            }
+        }
+
         // Track tool launches with enhanced analytics
         function launchTool(tool) {
             console.log(`🚀 Launching ${tool}...`);
@@ -770,6 +830,8 @@
 
         // Enhanced initialization
         document.addEventListener('DOMContentLoaded', () => {
+            renderExternalTools();
+
             // Initial status check
             checkStatus();
 
