@@ -81,7 +81,10 @@ const getRoomId = () => {
 const multiplayerAssets = {
     async upload(_asset, file) {
         const id = uniqueId()
-        const objectName = `${id}-${file.name}`
+        // The sync server only accepts [A-Za-z0-9_.-] ids; a drag-dropped
+        // "Screenshot 2026-01-01 at 09.00.00.png" was rejected with 400.
+        const safeName = file.name.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)
+        const objectName = `${id}-${safeName}`
         const url = `${getBaseUrl()}/tldraw-sync/uploads/${encodeURIComponent(objectName)}`
 
         try {

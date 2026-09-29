@@ -23,6 +23,19 @@ function isSafeId(s) {
     return typeof s === 'string' && SAFE_ID_RE.test(s) && !s.includes('..')
 }
 
+// decodeURIComponent throws on malformed escapes (e.g. "%E0%A4"); inside an
+// async request handler that became an unhandled rejection and took the
+// whole process down. Return null and let isSafeId reject it instead.
+function safeDecode(s) {
+    try { return decodeURIComponent(s) } catch { return null }
+}
+
+// Last-resort guards: log instead of exiting on a stray rejection so one bad
+// request cannot drop every connected room.
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason)
+})
+
 // Reject SSRF targets — only http(s) URLs to a *public* host. Blocks
 // loopback, RFC-1918 private ranges, link-local (incl. cloud IMDS at
 // 169.254.169.254), and IPv6 equivalents. Does not resolve DNS so it
@@ -220,7 +233,9 @@ async function makeOrLoadRoom(roomId) {
                     // map entry is dropped.
                     await persistData()
                 }
-                rooms.delete(roomId)
+                // Only remove our own entry: a room re-created in the 5 s
+                // window would otherwise be dropped from the map while live.
+                if (rooms.get(roomId) === state) rooms.delete(roomId)
             }
         }, 5000)
 
@@ -279,7 +294,7 @@ async function unfurl(url) {
 }
 
 // Create WebSocket server that handles upgrade requests manually
-const wss = new WebSocketServer({ noServer: true })
+const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
 
 // Monitoring and statistics functions
 async function getRoomStatistics() {
@@ -297,10 +312,10 @@ async function getRoomStatistics() {
             const roomFiles = await readdir(DIR)
             
             for (const file of roomFiles) {
-                if (file.endsWith('.tldr')) {
+                if (!file.startsWith('.')) {
                     const filePath = join(DIR, file)
                     const stat_result = await stat(filePath)
-                    const roomName = file.replace('.tldr', '')
+                    const roomName = file
                     
                     // Check if room is active (modified within last 24 hours)
                     const isActive = (Date.now() - stat_result.mtime.getTime()) < (24 * 60 * 60 * 1000)
@@ -430,7 +445,12 @@ async function getHealthStatus() {
         try {
             await mkdir(DIR, { recursive: true })
             await mkdir(ASSETS_DIR, { recursive: true })
-            health.checks.storage = { status: 'healthy', details: 'Directories accessible' }
+            // mkdir -p on an existing root-owned directory succeeds; a write
+            // probe is what actually tells us snapshots can be saved.
+            const probe = join(DIR, `.health-${process.pid}`)
+            await writeFile(probe, '')
+            await unlink(probe)
+            health.checks.storage = { status: 'healthy', details: 'Directories writable' }
         } catch (error) {
             health.checks.storage = { status: 'error', details: error.message }
             health.status = 'unhealthy'
@@ -451,20 +471,18 @@ async function getHealthStatus() {
 const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`)
 
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-    
+    // No CORS headers on purpose: every client reaches this server through
+    // the hub on the same origin. A wildcard here let any web page drive
+    // asset uploads and deletes from an intranet user's browser.
     if (req.method === 'OPTIONS') {
-        res.writeHead(200)
+        res.writeHead(204)
         res.end()
         return
     }
 
     // Asset upload — size-limited, ID-validated, error-trapped.
     if (req.method === 'PUT' && url.pathname.startsWith('/uploads/')) {
-        const id = decodeURIComponent(url.pathname.slice('/uploads/'.length))
+        const id = safeDecode(url.pathname.slice('/uploads/'.length))
         if (!isSafeId(id)) {
             res.writeHead(400); res.end('Invalid asset id'); return
         }
@@ -500,7 +518,7 @@ const server = createServer(async (req, res) => {
 
     // Asset download.
     if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
-        const id = decodeURIComponent(url.pathname.slice('/uploads/'.length))
+        const id = safeDecode(url.pathname.slice('/uploads/'.length))
         if (!isSafeId(id)) {
             res.writeHead(400); res.end('Invalid asset id'); return
         }
@@ -516,7 +534,7 @@ const server = createServer(async (req, res) => {
     // Asset delete (called by client TLAssetStore.remove on shape deletion).
     // Idempotent — missing file is fine.
     if (req.method === 'DELETE' && url.pathname.startsWith('/uploads/')) {
-        const id = decodeURIComponent(url.pathname.slice('/uploads/'.length))
+        const id = safeDecode(url.pathname.slice('/uploads/'.length))
         if (!isSafeId(id)) {
             res.writeHead(400); res.end('Invalid asset id'); return
         }
@@ -604,7 +622,7 @@ server.on('upgrade', (request, socket, head) => {
 wss.on('connection', async (ws, req) => {
     const url = new URL(req.url, `http://localhost:${PORT}`)
     const pathParts = url.pathname.split('/')
-    const roomId = decodeURIComponent(pathParts[pathParts.length - 1] || '')
+    const roomId = safeDecode(pathParts[pathParts.length - 1] || '')
     const sessionId = url.searchParams.get('sessionId') || `session-${Date.now()}-${Math.random()}`
 
     // Reject path-traversal attempts (e.g. /connect/../../server.js) and
@@ -623,26 +641,18 @@ wss.on('connection', async (ws, req) => {
             console.error(`WebSocket error for room=${roomId}, session=${sessionId}:`, error)
         })
         
-        ws.on('close', (code, reason) => {
-            console.log(`WebSocket closed: room=${roomId}, session=${sessionId}, code=${code}, reason=${reason}`)
-        })
-        
-        ws.on('pong', () => {
-            console.log(`Pong received from room=${roomId}, session=${sessionId}`)
-        })
-        
-        // Set up periodic ping to keep connection alive
+        // Periodic ping keeps the connection alive through proxies.
         const pingInterval = setInterval(() => {
             if (ws.readyState === ws.OPEN) {
                 ws.ping()
-                console.log(`Ping sent to room=${roomId}, session=${sessionId}`)
             } else {
                 clearInterval(pingInterval)
             }
-        }, 30000) // Ping every 30 seconds
-        
-        ws.on('close', () => {
+        }, 30000)
+
+        ws.on('close', (code, reason) => {
             clearInterval(pingInterval)
+            console.log(`WebSocket closed: room=${roomId}, session=${sessionId}, code=${code}, reason=${reason}`)
         })
         
         // Handle the socket connection with TLDraw room

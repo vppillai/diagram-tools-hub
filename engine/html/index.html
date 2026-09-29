@@ -38,7 +38,7 @@
                 radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
                 radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.15) 0%, transparent 50%);
-            min-height: 100vh;
+            min-height: 100dvh;
             margin: 0;
             padding: 0;
             display: flex;
@@ -68,7 +68,7 @@
         .container {
             max-width: 1400px;
             width: 95%;
-            min-height: 100vh;
+            min-height: 100dvh;
             margin: 0 auto;
             padding: 1rem 1.5rem;
             position: relative;
@@ -414,6 +414,18 @@
             font-weight: 500;
         }
 
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
+
+        .btn:focus-visible, .github-link:focus-visible {
+            outline: 2px solid #a5b4fc;
+            outline-offset: 3px;
+        }
+
         @keyframes fadeInUp {
             from {
                 opacity: 0;
@@ -443,7 +455,7 @@
         @media (max-width: 768px) {
             .container {
                 padding: 0.75rem 1rem;
-                min-height: 100vh;
+                min-height: 100dvh;
                 justify-content: space-between;
             }
 
@@ -580,7 +592,7 @@
     <div class="container">
         <div class="header">
             <div class="github-corner">
-                <a href="https://github.com/vppillai/diagram-tools-hub" target="_blank" class="github-link">
+                <a href="https://github.com/vppillai/diagram-tools-hub" target="_blank" rel="noopener" class="github-link">
                     <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
                         <path
                             d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.30 3.297-1.30.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
@@ -618,7 +630,7 @@
                                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                     </a>
-                    <a href="/drawio/" target="_blank" class="btn btn-secondary">New Tab</a>
+                    <a href="/drawio/" target="_blank" rel="noopener" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
 
@@ -637,7 +649,7 @@
                                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                     </a>
-                    <a href="/excalidraw/" target="_blank" class="btn btn-secondary">New Tab</a>
+                    <a href="/excalidraw/" target="_blank" rel="noopener" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
 
@@ -656,7 +668,7 @@
                                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                     </a>
-                    <a href="/tldraw/" target="_blank" class="btn btn-secondary">New Tab</a>
+                    <a href="/tldraw/" target="_blank" rel="noopener" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
 
@@ -675,7 +687,7 @@
                                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                     </a>
-                    <a href="/whiteboard/" target="_blank" class="btn btn-secondary">New Tab</a>
+                    <a href="/whiteboard/" target="_blank" rel="noopener" class="btn btn-secondary">New Tab</a>
                 </div>
             </div>
 
@@ -686,19 +698,19 @@
             <h3>Service Status</h3>
             <div class="status-grid">
                 <div class="status-item">
-                    <span class="status-indicator loading" id="drawio-status"></span>
+                    <span class="status-indicator loading" id="drawio-status" role="status" aria-label="Draw.io: checking"></span>
                     <span>Draw.io</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-indicator loading" id="excalidraw-status"></span>
+                    <span class="status-indicator loading" id="excalidraw-status" role="status" aria-label="Excalidraw: checking"></span>
                     <span>Excalidraw</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-indicator loading" id="tldraw-status"></span>
+                    <span class="status-indicator loading" id="tldraw-status" role="status" aria-label="tldraw: checking"></span>
                     <span>tldraw</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-indicator loading" id="whiteboard-status"></span>
+                    <span class="status-indicator loading" id="whiteboard-status" role="status" aria-label="Whiteboard: checking"></span>
                     <span>Whiteboard</span>
                 </div>
 
@@ -770,6 +782,8 @@
                     const dot = document.createElement('span');
                     dot.className = 'status-indicator loading';
                     dot.id = `${tool.id}-status`;
+                    dot.setAttribute('role', 'status');
+                    dot.setAttribute('aria-label', `${tool.name}: checking`);
                     const label = document.createElement('span');
                     label.textContent = tool.name;
                     item.append(dot, label);
@@ -829,12 +843,14 @@
 
                     if (response.ok || (service.external && response.type === 'opaque')) {
                         indicator.className = 'status-indicator';
+                        indicator.setAttribute('aria-label', `${indicator.getAttribute('aria-label').split(':')[0]}: online`);
                         return { service: service.name, status: 'online' };
                     } else {
                         throw new Error(`HTTP ${response.status}`);
                     }
                 } catch (error) {
                     indicator.className = 'status-indicator error';
+                    indicator.setAttribute('aria-label', `${indicator.getAttribute('aria-label').split(':')[0]}: offline`);
                     console.warn(`Service ${service.name} is not accessible:`, error.message);
                     return { service: service.name, status: 'offline' };
                 }
@@ -914,10 +930,14 @@
         });
 
         // Add keyboard navigation
+        // Number keys open the Nth card (1-4 built-in, then external tools).
         document.addEventListener('keydown', (e) => {
-            if (e.key === '1') launchTool('drawio');
-            if (e.key === '2') launchTool('excalidraw');
-            if (e.key === '3') launchTool('tldraw');
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+            const n = parseInt(e.key, 10);
+            if (!n) return;
+            const link = document.querySelectorAll('.tools-grid .tool-card a.btn-primary')[n - 1];
+            if (link) location.href = link.href;
         });
     </script>
 </body>

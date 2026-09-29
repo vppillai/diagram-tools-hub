@@ -21,6 +21,8 @@
 # /tldraw-sync/ in HTTPS and HTTP-fallback, so the sync feature only
 # worked in two of the three modes. One source of truth fixes that class
 # of bug for good.
+worker_processes auto;
+
 events {
     worker_connections 1024;
 }
@@ -28,6 +30,13 @@ events {
 http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
+    server_tokens off;
+
+    # Hub-served files only (upstream responses pass through as-is).
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
 ${SSL_PROTOCOLS_BLOCK}${HOST_GUARD_MAP}
     upstream drawio_backend      { server drawio:8080; }
     upstream excalidraw_backend  { server excalidraw:80; }
@@ -38,6 +47,9 @@ ${SSL_PROTOCOLS_BLOCK}${HOST_GUARD_MAP}
     server {
         ${LISTEN_DIRECTIVE}
         server_name _;
+        # tldraw image uploads are capped at 10 MB by the sync server; nginx's
+        # 1 MB default rejected them with 413 before they got there.
+        client_max_body_size 12m;
 ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
         # Main hub landing page. Un-versioned files (index.html,
         # external-tools.js, logos), so "expires -1" emits Cache-Control:
@@ -59,10 +71,11 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            add_header X-Frame-Options "" always;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
         }
         location /drawio/ {
             proxy_pass http://drawio_backend/;
@@ -70,10 +83,14 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            add_header X-Frame-Options SAMEORIGIN always;
+            # nginx: any add_header here discards the server-level ones, so
+            # the security headers are repeated in this block.
+            add_header X-Frame-Options SAMEORIGIN always;${SECURITY_HEADERS}
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
         }
 
         # ----- Excalidraw ---------------------------------------------------
@@ -88,10 +105,13 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
         }
-        # Excalidraw requests /assets, /manifest.webmanifest, /sw.js from
-        # the page root; route those to the excalidraw upstream (but not
-        # if they're part of the /tldraw/ mount).
-        location ~ ^/(?!tldraw)(assets|manifest\.webmanifest|sw\.js) {
+        # Excalidraw requests /assets/* and /manifest.webmanifest from the
+        # page root; route those to the excalidraw upstream. Its /sw.js is
+        # deliberately NOT proxied: a service worker registered at "/" would
+        # intercept navigations to every other tool on this origin, and a
+        # 404 makes browsers unregister an already-installed one.
+        location = /sw.js { return 404; }
+        location ~ ^/(assets/|manifest\.webmanifest$) {
             proxy_pass http://excalidraw_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -129,9 +149,15 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
         # The frontend connects to wss://host/tldraw-sync/connect/<room>
         # so this path is load-bearing; the v1.3 CI nginx config used
         # /tldraw/sync/ instead and broke real-time collab in CI mode.
+        # Monitoring endpoints are for the operator (manage-config.sh reaches
+        # them via docker exec); they enumerate rooms and expose process
+        # details, so they are not exposed through the hub.
+        location ^~ /tldraw-sync/api/ { return 404; }
         location /tldraw-sync/ {
             rewrite ^/tldraw-sync/(.*)$ /$1 break;
             proxy_pass http://tldraw_sync_backend;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -156,12 +182,11 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
         # ----- Misc ---------------------------------------------------------
         location = /favicon.ico {
             return 204;
-            add_header Content-Type image/x-icon;
         }
         location /health {
             access_log off;
+            default_type text/plain;
             return 200 "OK\n";
-            add_header Content-Type text/plain;
         }
     }
 }

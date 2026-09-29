@@ -18,7 +18,8 @@ docker-compose.yml
 *.backup
 config-backup-*.tar.gz
 
-# Environment files
+# Environment files (deployment-specific; copy .env.example to .env)
+.env
 .env.local
 .env.production
 
