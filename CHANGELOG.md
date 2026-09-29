@@ -11,6 +11,10 @@ For commit-level detail, see the auto-generated body of each
 
 ### Fixed
 
+- **Room snapshots were never saved with `@tldraw/sync-core` 5.4.** `TLSocketRoom.getSnapshot()` no longer exists in that version (`TypeError: state.room.getSnapshot is not a function` on every persist); the server now calls `getCurrentSnapshot()`.
+
+### Fixed
+
 - **tldraw rooms failed with `SERVER_TOO_OLD` after a rebuild.** The frontend declared `^5.0.0` with no lockfile, so a fresh image build resolved tldraw 5.4.2 while the sync backend was locked at `@tldraw/sync-core` 5.2.5; the newer client refuses the older protocol. Both sides are now pinned to the same exact version (5.4.2) so they only move together.
 
 ### Fixed

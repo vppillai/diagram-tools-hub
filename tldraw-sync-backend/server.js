@@ -194,7 +194,7 @@ async function makeOrLoadRoom(roomId) {
             if (!state.needsPersist) return
             state.needsPersist = false
             try {
-                const snapshot = state.room.getSnapshot()
+                const snapshot = state.room.getCurrentSnapshot()
                 await saveSnapshot(roomId, snapshot)
             } catch (error) {
                 console.error(`Failed to save snapshot for room ${roomId}:`, error)
