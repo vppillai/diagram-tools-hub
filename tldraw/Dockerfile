@@ -14,7 +14,7 @@
 # multi-stage build.
 
 # ---- build -----------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 
 # We use `npm install` (not `npm ci`) on purpose. Vite 8 pulls in rolldown,
@@ -38,7 +38,7 @@ COPY src ./src
 RUN npm run build
 
 # ---- dev (for docker-compose.dev.yml; selected via `target: dev`) ----------
-FROM node:22-alpine AS dev
+FROM node:26-alpine AS dev
 WORKDIR /app
 
 COPY package.json ./
