@@ -8,8 +8,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000"
   },
   "dependencies": {
-    "@tldraw/sync": "^5.0.0",
-    "@tldraw/tldraw": "^5.0.0",
+    "@tldraw/sync": "5.4.2",
+    "@tldraw/tldraw": "5.4.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

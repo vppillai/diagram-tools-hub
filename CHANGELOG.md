@@ -11,6 +11,10 @@ For commit-level detail, see the auto-generated body of each
 
 ### Fixed
 
+- **tldraw rooms failed with `SERVER_TOO_OLD` after a rebuild.** The frontend declared `^5.0.0` with no lockfile, so a fresh image build resolved tldraw 5.4.2 while the sync backend was locked at `@tldraw/sync-core` 5.2.5; the newer client refuses the older protocol. Both sides are now pinned to the same exact version (5.4.2) so they only move together.
+
+### Fixed
+
 - **tldraw image uploads over 1 MB failed with 413.** The engine nginx had no `client_max_body_size`, so nginx's 1 MB default rejected uploads the sync server allows up to 10 MB. Now 12 MB at the server level.
 - **Sync server crash on a malformed URL.** `decodeURIComponent` threw inside async handlers (`/uploads/%E0%A4`) and the unhandled rejection exited the process. Decoding is now guarded and an `unhandledRejection` handler logs instead of exiting.
 - **tldraw rooms could never persist on a fresh Linux install.** Docker created the bind-mounted `.rooms`/`.assets` directories as root while the container runs as `app` (uid 100). `manage-config.sh` now creates them and fixes ownership; the sync health check writes a probe file instead of only `mkdir`.
