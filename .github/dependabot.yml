@@ -52,7 +52,9 @@ updates:
   # was here previously — dependabot dedupes silently, so the second
   # block was dead config that confused readers.)
   - package-ecosystem: "docker"
-    directory: "/"
+    directories:
+      - "/tldraw"
+      - "/tldraw-sync-backend"
     schedule:
       interval: "weekly"
       day: "monday"

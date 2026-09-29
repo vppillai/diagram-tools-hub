@@ -79,35 +79,6 @@ jobs:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
 
-      - name: Run Bandit security linter
-        run: |
-          pip install bandit
-          bandit -r . -f json -o bandit-report.json || true
-
-
-
-      - name: Comment security findings
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const fs = require('fs');
-            let comment = '## 🔒 Security Scan Results\n\n';
-            
-            // Add Trivy results if available
-            if (fs.existsSync('trivy-results.sarif')) {
-              comment += '### 🔍 Vulnerability Scan\n';
-              comment += 'Trivy scan completed. Check the Security tab for details.\n\n';
-            }
-            
-            // Add Bandit results if available
-            if (fs.existsSync('bandit-report.json')) {
-              const banditReport = JSON.parse(fs.readFileSync('bandit-report.json', 'utf8'));
-              if (banditReport.results && banditReport.results.length > 0) {
-                comment += '### ⚠️ Security Issues Found\n';
-                banditReport.results.forEach(result => {
-                  comment += `- **${result.issue_severity}**: ${result.issue_text} (${result.filename}:${result.line_number})\n`;
-                });
               } else {
                 comment += '### ✅ No security issues found by Bandit\n';
               }

@@ -9,6 +9,29 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Fixed
+
+- **tldraw image uploads over 1 MB failed with 413.** The engine nginx had no `client_max_body_size`, so nginx's 1 MB default rejected uploads the sync server allows up to 10 MB. Now 12 MB at the server level.
+- **Sync server crash on a malformed URL.** `decodeURIComponent` threw inside async handlers (`/uploads/%E0%A4`) and the unhandled rejection exited the process. Decoding is now guarded and an `unhandledRejection` handler logs instead of exiting.
+- **tldraw rooms could never persist on a fresh Linux install.** Docker created the bind-mounted `.rooms`/`.assets` directories as root while the container runs as `app` (uid 100). `manage-config.sh` now creates them and fixes ownership; the sync health check writes a probe file instead of only `mkdir`.
+- **Security headers were missing on `/drawio/` responses.** A location-level `add_header` discards the server-level set in nginx; the headers are repeated there and the no-op `add_header X-Frame-Options ""` in the embed location is gone.
+- **`http-only` re-launched HTTPS.** It restored `.backup` snapshots that were always HTTPS configs. It now renders the HTTP configs directly; the backup mechanism and the dead `ensure_env_variables_in_compose` port rewrite are removed.
+- **Room-map race** where a room re-created within the 5 s close window was dropped from the map; **`/api/rooms` always reported zero** because it filtered for a `.tldr` suffix snapshots never had.
+- **Drag-dropped files with spaces or unicode in the name were rejected (400).** The upload id is sanitised client-side to the server's allowed charset.
+- **WebSocket connections dropped after 60 s idle** behind nginx: `proxy_read_timeout 3600s` on the sync and draw.io locations.
+
+### Changed
+
+- **Restart without a full outage.** `start`/`restart` regenerate configs first, then `docker compose up -d --remove-orphans` (only changed services are recreated) and hot-reload the engine's nginx after `nginx -t`. Previously every restart ran `compose down` before generating anything.
+- **Sync monitoring endpoints are no longer public.** `/tldraw-sync/api/*` returns 404 through the hub (the script reaches them via `docker exec`); CORS headers are removed from the sync server (all traffic is same-origin); WebSocket payloads capped at 4 MB; per-ping log lines removed.
+- **Excalidraw's service worker is no longer proxied.** `/sw.js` returns 404 so a worker registered at scope `/` cannot intercept navigations to other tools; the root asset regex is anchored.
+- **Room/asset retention is configurable from `.env`** (`ROOM_RETENTION_DAYS`, `ASSET_RETENTION_DAYS`, `CLEANUP_ENABLED`); default retention raised from 7 to 90 days.
+- **`.env` is no longer tracked.** Copy `.env.example` (the script does this automatically on first run). Unused `HTTP_REDIRECT_PORT`, `TLDRAW_DEBUG_PANEL`, `NODE_ENV`, `ENABLE_ANALYTICS`, `ENABLE_TELEMETRY` removed from the example.
+- **`backup-config` now archives the data that is not in git** (`.env`, `certs/`, rooms, assets) instead of the `tldraw/` source tree.
+- Engine nginx: `worker_processes auto`, `server_tokens off`, gzip for hub-served files, `http2 on` (replaces the deprecated `listen … http2`), deprecated `X-XSS-Protection` header dropped, hub hostname quoted and lowercased in the 421 map.
+- Landing page: number keys now actually open the Nth tool; status dots carry `role="status"` and text labels; `prefers-reduced-motion` disables animations; visible focus rings; `rel="noopener"` on New Tab links; `100dvh` for mobile viewports.
+- Repo hygiene: removed the issue-spamming `notification.yml` and the unrunnable `deployment-verification.yml`, the Bandit step (no Python in this repo) and PR comment step from `security.yml`, and the pasted `sync-spec.md`; Dependabot's docker entry now points at the directories that have Dockerfiles.
+
 ### Added
 
 - **External tools appear in the Service Status panel.** Each `EXTERNAL_TOOLS` entry gets a status dot next to the built-in ones. Cross-origin reachability is probed with a `no-cors` HEAD request: any HTTP answer counts as online, a network failure or 5 s timeout as offline.

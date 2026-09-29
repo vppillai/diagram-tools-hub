@@ -6,6 +6,10 @@ set -e  # Exit on any error
 
 # Load environment variables
 load_env() {
+    if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+        cp .env.example .env
+        echo "Created .env from .env.example — edit it for your deployment."
+    fi
     if [ -f ".env" ]; then
         # Source as shell so quoted values may contain spaces, '|' and ';'
         # (EXTERNAL_TOOLS needs all three). Quote such values in .env.
@@ -154,14 +158,13 @@ start_services() {
     setup_ssl_auto "$cert_file" "$key_file"
 
     log_info "Starting all services..."
-    
-    # Stop any existing containers first to avoid conflicts
-    sudo docker compose down 2>/dev/null || true
-    
-    # Ensure all configuration files exist
+
+    # Ensure all configuration files exist, then converge: compose only
+    # recreates containers whose definition changed.
     ensure_configs_exist
-    
-    sudo docker compose up -d
+
+    sudo docker compose up -d --remove-orphans
+    reload_engine_nginx
     log_success "All services started successfully!"
     
     # Show access information
@@ -246,15 +249,15 @@ restart_services() {
         show_status
     else
         log_info "Restarting all services..."
-        sudo docker compose down
-        
-        # Handle SSL setup automatically
+
+        # Regenerate first; a failure here leaves the running stack untouched.
         setup_ssl_auto "$cert_file" "$key_file"
-        
-        # Ensure all configuration files exist
         ensure_configs_exist
-        
-        sudo docker compose up -d
+
+        # Converge instead of down/up: only changed services are recreated,
+        # and the engine picks up a changed nginx.conf via reload.
+        sudo docker compose up -d --remove-orphans
+        reload_engine_nginx
         log_success "All services restarted successfully!"
         
         # Show access information
@@ -571,34 +574,31 @@ enable_https_config() {
 }
 
 http_only() {
-    log_info "Switching to HTTP-only mode..."
-    
-    # Restore original nginx configuration
-    if [ -f "./engine/nginx.conf.backup" ]; then
-        cp "./engine/nginx.conf.backup" "./engine/nginx.conf"
-        log_info "Restored original nginx configuration"
-    else
-        log_warning "No backup nginx configuration found. Creating HTTP-only configuration."
-        create_http_only_config
-    fi
-    
-    # Restore original docker-compose configuration
-    if [ -f "./docker-compose.yml.backup" ]; then
-        cp "./docker-compose.yml.backup" "./docker-compose.yml"
-        log_info "Restored original docker-compose configuration"
-    else
-        log_warning "No backup docker-compose configuration found. Creating HTTP-only configuration."
-        create_http_only_docker_compose
-    fi
-    
-    # Restart services
+    log_info "Switching to HTTP-only mode (until the next start/restart with certs present)..."
+    create_http_only_config
+    create_http_only_docker_compose
+    ensure_sync_data_dirs
+
     log_info "Restarting services in HTTP-only mode..."
-    sudo docker compose down 2>/dev/null || true
-    sudo docker compose up -d
+    sudo docker compose up -d --remove-orphans
     
     log_success "Switched to HTTP-only mode successfully!"
     log_info "Services available at:"
     log_info "  🌐 http://localhost:$HTTP_PORT (Main hub)"
+}
+
+# The engine's nginx.conf is a bind mount, so a regenerated file needs a
+# reload (compose does not recreate a container when a mounted file changes).
+reload_engine_nginx() {
+    if sudo docker ps --format '{{.Names}}' | grep -qx diagram-engine; then
+        if sudo docker exec diagram-engine nginx -t >/dev/null 2>&1; then
+            sudo docker exec diagram-engine nginx -s reload
+        else
+            log_error "Generated nginx.conf failed 'nginx -t' — engine keeps its previous config"
+            sudo docker exec diagram-engine nginx -t
+            return 1
+        fi
+    fi
 }
 
 # Render the engine nginx config from engine/nginx.conf.template. One source
@@ -631,10 +631,10 @@ render_nginx_config() {
     # through unchanged. Each block is a heredoc (no command substitution).
     case "$mode" in
         https)
-            export LISTEN_DIRECTIVE="listen 443 ssl http2;"
+            export LISTEN_DIRECTIVE=$'listen 443 ssl;\n        http2 on;'
             export SSL_PROTOCOLS_BLOCK=$'\n    ssl_protocols TLSv1.2 TLSv1.3;\n    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256;\n    ssl_prefer_server_ciphers off;\n    ssl_session_cache shared:SSL:10m;\n    ssl_session_timeout 10m;\n'
             export SSL_CERT_BLOCK=$'\n        ssl_certificate /etc/ssl/certs/cert.pem;\n        ssl_certificate_key /etc/ssl/private/key.pem;'
-            export SECURITY_HEADERS=$'\n        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;\n        add_header X-Content-Type-Options nosniff always;\n        add_header X-XSS-Protection "1; mode=block" always;\n        add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n'
+            export SECURITY_HEADERS=$'\n        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;\n        add_header X-Content-Type-Options nosniff always;\n        add_header Referrer-Policy "strict-origin-when-cross-origin" always;\n'
             # HTTP/2 connection coalescing guard (RFC 9113 §9.1.2). A browser
             # reuses an open h2 connection for ANY hostname the certificate
             # covers that resolves to the same IP. When the hub shares an IP
@@ -642,7 +642,10 @@ render_nginx_config() {
             # that service's requests arrive here and get the hub page.
             # Answering 421 makes the browser retry on a fresh connection
             # (correct SNI) instead. Only SSL_DOMAIN and loopback are served.
-            export HOST_GUARD_MAP=$'\n    map $host $misdirected {\n        default      1;\n        localhost    0;\n        127.0.0.1    0;\n        "[::1]"      0;\n        '"${SSL_DOMAIN}"$'  0;\n    }\n'
+            # $host is lowercased by nginx; quote the value so a domain with
+            # unusual characters cannot change the map's semantics.
+            local hub_host; hub_host="$(printf '%s' "${SSL_DOMAIN}" | tr 'A-Z' 'a-z')"
+            export HOST_GUARD_MAP=$'\n    map $host $misdirected {\n        default      1;\n        localhost    0;\n        127.0.0.1    0;\n        "[::1]"      0;\n        "'"${hub_host}"$'"  0;\n    }\n'
             export HOST_GUARD=$'\n        if ($misdirected) { return 421; }\n'
             ;;
         http|ci)
@@ -730,24 +733,13 @@ cleanup_containers() {
 }
 
 create_https_nginx_config() {
-    local nginx_conf="./engine/nginx.conf"
-    if [ -f "$nginx_conf" ] && [ ! -f "$nginx_conf.backup" ]; then
-        cp "$nginx_conf" "$nginx_conf.backup"
-        log_info "Backed up original nginx configuration"
-    fi
     render_nginx_config https
     log_info "Created HTTPS nginx configuration"
 }
 
 update_docker_compose_https() {
     local compose_file="./docker-compose.yml"
-    
-    # Backup original configuration only if backup doesn't exist
-    if [ -f "$compose_file" ] && [ ! -f "$compose_file.backup" ]; then
-        cp "$compose_file" "$compose_file.backup"
-        log_info "Backed up original docker-compose configuration"
-    fi
-    
+
     # Create HTTPS docker-compose configuration
     cat > "$compose_file" << EOF
 services:
@@ -767,6 +759,7 @@ services:
       - excalidraw
       - tldraw
       - tldraw-sync
+      - whiteboard
     restart: unless-stopped
 
   # Draw.io container
@@ -803,6 +796,11 @@ services:
     volumes:
       - ./tldraw-sync-backend/.rooms:/app/.rooms
       - ./tldraw-sync-backend/.assets:/app/.assets
+    environment:
+      # Days before an idle room / unreferenced asset file is deleted.
+      - ROOM_RETENTION_DAYS=\${ROOM_RETENTION_DAYS:-90}
+      - ASSET_RETENTION_DAYS=\${ASSET_RETENTION_DAYS:-90}
+      - CLEANUP_ENABLED=\${CLEANUP_ENABLED:-true}
     restart: unless-stopped
 
   # Whiteboard - low-latency, pen-optimized whiteboard (vppillai/whiteboard)
@@ -851,6 +849,7 @@ services:
       - excalidraw
       - tldraw
       - tldraw-sync
+      - whiteboard
     restart: unless-stopped
 
   # Draw.io container
@@ -887,6 +886,11 @@ services:
     volumes:
       - ./tldraw-sync-backend/.rooms:/app/.rooms
       - ./tldraw-sync-backend/.assets:/app/.assets
+    environment:
+      # Days before an idle room / unreferenced asset file is deleted.
+      - ROOM_RETENTION_DAYS=\${ROOM_RETENTION_DAYS:-90}
+      - ASSET_RETENTION_DAYS=\${ASSET_RETENTION_DAYS:-90}
+      - CLEANUP_ENABLED=\${CLEANUP_ENABLED:-true}
     restart: unless-stopped
 
   # Whiteboard - low-latency, pen-optimized whiteboard (vppillai/whiteboard)
@@ -930,24 +934,23 @@ ensure_configs_exist() {
         create_http_only_docker_compose
     fi
 
-    ensure_env_variables_in_compose
+    ensure_sync_data_dirs
     log_info "Configuration files regenerated."
 }
 
-ensure_env_variables_in_compose() {
-    local compose_file="./docker-compose.yml"
-    
-    # Check if docker-compose.yml uses hardcoded ports and fix them
-    if grep -q '"80:80"' "$compose_file" || grep -q '"443:443"' "$compose_file"; then
-        log_info "Updating docker-compose.yml to use environment variables..."
-        
-        # Update hardcoded ports to use environment variables
-        sed -i 's/"80:80"/"${HTTP_REDIRECT_PORT:-80}:80"/g' "$compose_file"
-        sed -i 's/"443:443"/"${HTTPS_PORT:-443}:443"/g' "$compose_file"
-        
-        log_info "Docker-compose.yml updated to use configurable ports"
-    fi
+# The sync backend runs as the unprivileged 'app' user (uid 100 / gid 101 in
+# the Alpine image). Docker creates missing bind-mount sources as root, which
+# made every snapshot write fail silently on a fresh install.
+ensure_sync_data_dirs() {
+    local d
+    for d in tldraw-sync-backend/.rooms tldraw-sync-backend/.assets; do
+        mkdir -p "$d" 2>/dev/null || sudo mkdir -p "$d"
+        if [ "$(stat -c %u "$d" 2>/dev/null || stat -f %u "$d")" != "100" ]; then
+            sudo chown -R 100:101 "$d" || log_warning "Could not chown $d to 100:101 — tldraw rooms will not persist"
+        fi
+    done
 }
+
 
 
 
@@ -961,12 +964,9 @@ backup_config() {
     local backup_file="config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
     log_info "Creating configuration backup: $backup_file"
     
-    tar -czf "$backup_file" \
-        --exclude='.git' \
-        --exclude='node_modules' \
-        --exclude='*.log' \
-        --exclude='*.tmp' \
-        .env docker-compose.yml engine/ tldraw/ 2>/dev/null || true
+    # Everything else is reproducible from git + these inputs.
+    sudo tar -czf "$backup_file" \
+        .env certs tldraw-sync-backend/.rooms tldraw-sync-backend/.assets 2>/dev/null || true
     
     if [ -f "$backup_file" ]; then
         log_success "Configuration backed up to: $backup_file"
