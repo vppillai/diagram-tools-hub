@@ -1,0 +1,129 @@
+name: tldraw parity & lint
+
+# The tldraw frontend and the sync backend must run the exact same tldraw
+# version: a mismatch (or a server API that disappeared, e.g. the
+# getSnapshot -> getCurrentSnapshot rename in sync-core 5.4) builds fine and
+# only breaks at runtime when rooms stop persisting. This workflow proves the
+# pair actually talks and persists, and lints the ops scripts/configs.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Declared tldraw versions are exact and identical
+        run: |
+          node -e '
+            const fe = require("./tldraw/package.json").dependencies;
+            const be = require("./tldraw-sync-backend/package.json").dependencies;
+            const lock = require("./tldraw-sync-backend/package-lock.json").packages;
+            const want = {
+              "tldraw/package.json @tldraw/tldraw": fe["@tldraw/tldraw"],
+              "tldraw/package.json @tldraw/sync": fe["@tldraw/sync"],
+              "tldraw-sync-backend/package.json @tldraw/sync-core": be["@tldraw/sync-core"],
+              "tldraw-sync-backend/package-lock.json @tldraw/sync-core": lock["node_modules/@tldraw/sync-core"]?.version,
+            };
+            console.table(want);
+            const bad = Object.entries(want).filter(([, v]) => !/^\d+\.\d+\.\d+$/.test(v || ""));
+            if (bad.length) { console.error("::error::not an exact version pin:", bad); process.exit(1); }
+            if (new Set(Object.values(want)).size !== 1) { console.error("::error::tldraw versions differ between frontend and backend"); process.exit(1); }
+          '
+
+      - name: Install backend (npm ci)
+        working-directory: tldraw-sync-backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Install frontend
+        # No lockfile on purpose (see .gitignore: rolldown native bindings).
+        working-directory: tldraw
+        run: npm install --no-audit --no-fund
+
+      - name: Resolved frontend sync-core matches backend
+        run: |
+          FE=$(node -p 'require("./tldraw/node_modules/@tldraw/sync-core/package.json").version')
+          BE=$(node -p 'require("./tldraw-sync-backend/node_modules/@tldraw/sync-core/package.json").version')
+          echo "frontend resolves @tldraw/sync-core $FE, backend $BE"
+          if [ "$FE" != "$BE" ]; then
+            echo "::error::frontend resolves @tldraw/sync-core $FE but backend runs $BE"
+            exit 1
+          fi
+
+      - name: Build frontend
+        working-directory: tldraw
+        run: npm run build
+
+      - name: Client <-> server round-trip persists a room
+        run: |
+          cd tldraw-sync-backend
+          PORT=3901 CLEANUP_ENABLED=false node server.js > "$RUNNER_TEMP/sync-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/sync-server.pid"
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3901/health >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          cd ../tldraw
+          node tests/sync-parity.mjs
+
+      - name: Server log is clean
+        if: always()
+        run: |
+          kill "$(cat "$RUNNER_TEMP/sync-server.pid")" 2>/dev/null || true
+          sleep 1
+          echo "----- sync server log -----"
+          cat "$RUNNER_TEMP/sync-server.log"
+          if grep -Eiq 'error|unhandled|exception|failed' "$RUNNER_TEMP/sync-server.log"; then
+            echo "::error::sync server logged errors during the round-trip"
+            exit 1
+          fi
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+
+      - name: shellcheck
+        run: shellcheck -S warning manage-config.sh install-service.sh
+
+      - name: nginx -t (http render)
+        run: |
+          cp .env.example .env
+          ./manage-config.sh generate-nginx-config http 2>&1 | tee "$RUNNER_TEMP/http.log"
+          # Validation must have actually run, not been skipped.
+          if grep -q "without 'nginx -t'" "$RUNNER_TEMP/http.log"; then exit 1; fi
+
+      - name: nginx -t (https render)
+        run: |
+          mkdir -p certs
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+            -keyout certs/key.pem -out certs/cert.pem 2>/dev/null
+          ./manage-config.sh generate-nginx-config https 2>&1 | tee "$RUNNER_TEMP/https.log"
+          if grep -q "without 'nginx -t'" "$RUNNER_TEMP/https.log"; then exit 1; fi
+          grep -q 'listen 443 ssl' engine/nginx.conf
