@@ -78,15 +78,3 @@ jobs:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
-
-              } else {
-                comment += '### ✅ No security issues found by Bandit\n';
-              }
-            }
-            
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body: comment
-            }); 
