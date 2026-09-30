@@ -9,13 +9,48 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Security
+
+- **Uploaded assets can no longer carry stored XSS.** The sync server sniffs every upload's magic bytes and only accepts PNG, JPEG, GIF, WebP, AVIF, SVG, MP4, WebM and QuickTime (anything else: `415`). The detected type is kept in an `<id>.meta.json` sidecar and assets are served with that `Content-Type`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` and `Cache-Control: private, max-age=86400`. SVG stays inline so tldraw can render it; the sandbox CSP neutralises scripts when opened directly. Assets uploaded before this release are sniffed on read.
+- **Link unfurling is no longer an SSRF vector.** `/unfurl` resolves the host and rejects it if any address is loopback, private, link-local (incl. cloud metadata), CGNAT, ULA, multicast or unspecified — IPv4-mapped IPv6 and literal IPs included. The connection is pinned to the validated addresses (no DNS-rebind window), redirects are followed manually (max 3, each re-validated), with a 5 s deadline and a 1 MB body cap. Public hosts whose names merely start with `fc`/`fd`/`fe80` are no longer wrongly refused.
+
+### Fixed
+
+- **A corrupt room snapshot no longer gets silently overwritten.** An unparseable or unreadable `.rooms/<room>` is renamed to `<room>.corrupt-<timestamp>` and logged loudly; the room still opens (empty) so users are not locked out, and the original is kept for recovery.
+- **Snapshot writes are serialised per room** with unique temp names, so overlapping persists can no longer land an older snapshot last. A failed write re-arms the retry and is recorded; `/api/health` reports it and `/health` returns `503` for 10 minutes after a failed write.
+- **Retention cleanup no longer deletes the file behind an open room.** Previously a loaded room with no active session (or an open but unedited one) past retention lost its only copy.
+- **Assets are garbage-collected by reference.** An asset is deleted only when past `ASSET_RETENTION_DAYS` *and* not referenced by any room on disk or in memory. The client no longer `DELETE`s the upload when a shape is removed, which broke undo, copy/paste and other rooms using the same image (the endpoint remains for older clients).
+- **HTTPS render with `SSL_DOMAIN=localhost` was invalid nginx** (duplicate `localhost` key in the 421 host-guard map, "conflicting parameter"). Found by the new pre-install validation.
+- **`backup-config` reported success when tar failed** and left a world-readable archive containing the TLS key. It now fails loudly and writes a `0600` archive owned by the operator. `restore-config` extracts with `sudo tar -xzpf` and re-chowns the sync data directories to `100:101`.
+- **A regenerated nginx.conf now takes effect after single-service `rebuild`, `rebuild-dev` and `http-only`** (engine reload was missing).
+
+### Changed
+
+- **nginx config is validated before it replaces the live one.** `manage-config.sh` renders to `engine/nginx.conf.new`, runs `nginx -t` in a throwaway `nginx:alpine` container, and only then overwrites `engine/nginx.conf` in place (same inode, so the engine's bind mount sees it). On failure the old config stays and the nginx error is printed. Validation is skipped with a warning when docker is not runnable, or with `SKIP_NGINX_VALIDATE=1`; `generate-nginx-config` no longer needs docker.
+- **A missing `.env` is an error on an existing install.** `.env` is auto-created from `.env.example` only on a fresh install (no `certs/`); otherwise the script tells you to restore it instead of silently re-rendering for `localhost`. `help` works without `.env`, `docker-compose.yml` or docker. A warning is printed when HTTPS certs exist but `SSL_DOMAIN` is still `localhost`.
+- **Retention defaults in `server.js` are 90/90 days** (matching the compose defaults); the effective cleanup config is logged at startup.
+- **CI:** new `tldraw-parity.yml` — a *parity* job (exact, identical tldraw pins on both sides, frontend-resolved `@tldraw/sync-core` equals the backend's, vite build, and a real client↔server round-trip that must persist a room with a clean server log; `tldraw/tests/sync-parity.mjs`) and a *lint* job (actionlint, shellcheck, `nginx -t` of the http and https renders).
+- **Dependabot** bumps `tldraw`/`@tldraw/*` in the frontend and backend together in one grouped PR, and no longer opens Node major base-image bumps.
+
+## [1.10.3] — 2026-09-29
+
 ### Fixed
 
 - **Room snapshots were never saved with `@tldraw/sync-core` 5.4.** `TLSocketRoom.getSnapshot()` no longer exists in that version (`TypeError: state.room.getSnapshot is not a function` on every persist); the server now calls `getCurrentSnapshot()`.
 
+## [1.10.2] — 2026-09-29
+
 ### Fixed
 
 - **tldraw rooms failed with `SERVER_TOO_OLD` after a rebuild.** The frontend declared `^5.0.0` with no lockfile, so a fresh image build resolved tldraw 5.4.2 while the sync backend was locked at `@tldraw/sync-core` 5.2.5; the newer client refuses the older protocol. Both sides are now pinned to the same exact version (5.4.2) so they only move together.
+
+## [1.10.1] — 2026-09-29
+
+### Changed
+
+- `tldraw-sync-backend/node_modules` is no longer tracked in git (it is installed by `npm ci` in the image build).
+
+## [1.10.0] — 2026-09-29
 
 ### Fixed
 
@@ -40,6 +75,8 @@ For commit-level detail, see the auto-generated body of each
 - Landing page: number keys now actually open the Nth tool; status dots carry `role="status"` and text labels; `prefers-reduced-motion` disables animations; visible focus rings; `rel="noopener"` on New Tab links; `100dvh` for mobile viewports.
 - Repo hygiene: removed the issue-spamming `notification.yml` and the unrunnable `deployment-verification.yml`, the Bandit step (no Python in this repo) and PR comment step from `security.yml`, and the pasted `sync-spec.md`; Dependabot's docker entry now points at the directories that have Dockerfiles.
 
+## [1.9.0] — 2026-09-28
+
 ### Added
 
 - **External tools appear in the Service Status panel.** Each `EXTERNAL_TOOLS` entry gets a status dot next to the built-in ones. Cross-origin reachability is probed with a `no-cors` HEAD request: any HTTP answer counts as online, a network failure or 5 s timeout as offline.
@@ -50,9 +87,13 @@ For commit-level detail, see the auto-generated body of each
 - **Page scrolls when content is taller than the viewport.** `body`/`.container` used `height: 100vh; overflow: hidden`, which clipped anything below the fold with no scrollbar once a fifth card wrapped. Now `min-height: 100vh; overflow-y: auto`; layouts that fit are still vertically centred as before.
 - Status panel switched from a fixed four-column `inline-grid` to a wrapping `inline-flex` row, so it no longer needs a column-count bump when tools are added.
 
+## [1.8.1] — 2026-09-28
+
 ### Fixed
 
 - **Landing-page changes now reach returning users on the next load.** The hub served `index.html` and its sibling files with no `Cache-Control`, so browsers heuristically cached them for about 10% of the file's age (up to two weeks). `location /` now sends `Cache-Control: no-cache`; the browser revalidates by ETag and gets a 304 when nothing changed. Sub-app assets are unaffected.
+
+## [1.8.0] — 2026-09-28
 
 ### Added
 
@@ -61,6 +102,8 @@ For commit-level detail, see the auto-generated body of each
 ### Changed
 
 - `manage-config.sh` now sources `.env` as shell instead of `export $(... | xargs)`, so quoted values may contain spaces and `|`/`;`. Unquoted values without spaces behave as before.
+
+## [1.7.1] — 2026-09-28
 
 ### Fixed
 
@@ -488,7 +531,7 @@ key as an env var so non-localhost deployments are unblocked.
 
 ---
 
-[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.10.3...HEAD
 [1.4.2]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.2
 [1.4.1]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.1
 [1.4.0]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.0

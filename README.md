@@ -290,19 +290,24 @@ Key variables in `.env`:
 # Port Configuration
 HTTP_PORT=8080                      # HTTP port (when HTTPS disabled)
 HTTPS_PORT=8080                     # HTTPS port (currently set to 8080)
-HTTP_REDIRECT_PORT=80               # HTTP redirect port
-SSL_DOMAIN=localhost                # SSL certificate domain
+SSL_DOMAIN=localhost                # SSL certificate domain; in HTTPS mode the only hostname served (others get 421)
+
+# Landing page
+EXTERNAL_TOOLS=""                   # optional extra cards: Name|URL|Description[|LogoURL];...
 
 # TLDraw Settings
-TLDRAW_DEBUG_PANEL=true             # TLDraw debug panel (enabled)
 TLDRAW_LICENSE_KEY=                 # see "TLDraw licensing" below; required for non-localhost deploys
+#ROOM_RETENTION_DAYS=90             # idle (unloaded) rooms deleted after this many days
+#ASSET_RETENTION_DAYS=90            # unreferenced uploads deleted after this many days
+#CLEANUP_ENABLED=true
 
-# Application Settings
-NODE_ENV=production                 # Node.js environment
-ENABLE_ANALYTICS=false              # Analytics feature flag
-ENABLE_TELEMETRY=false              # Telemetry feature flag
 COMPOSE_PROJECT_NAME=diagram-tools-hub  # Docker Compose project name
 ```
+
+`.env` is created from `.env.example` only on a fresh install (no `certs/`
+yet). On an existing install a missing `.env` is an error — restore it (it is
+included in `./manage-config.sh backup-config` archives) rather than letting
+the hub silently fall back to `localhost` defaults.
 
 ### TLDraw Development
 
@@ -361,16 +366,18 @@ cd tldraw-sync-backend && npm start     # Production mode
 ### Technology Stack
 
 **Frontend Technologies:**
-- **TLDraw**: React 19 + Vite 8 + @tldraw/tldraw ^5.0.0 + @tldraw/sync ^5.0.0
+- **TLDraw**: React 19 + Vite 8 + @tldraw/tldraw 5.4.2 + @tldraw/sync 5.4.2 (exact pins, see below)
 - **Draw.io**: Official jgraph/drawio Docker image
 - **Excalidraw**: Official excalidraw/excalidraw Docker image
 - **Whiteboard**: vppillai/whiteboard (submodule), Bun + custom canvas engine
 - **Nginx**: Alpine-based reverse proxy with HTTPS termination
 
 **Backend Technologies:**
-- **TLDraw Sync**: Node.js 22 + @tldraw/sync-core ^5.0.0 + WebSocket (ws ^8.20.0)
+- **TLDraw Sync**: Node.js 22 + @tldraw/sync-core 5.4.2 (exact pin) + WebSocket (ws ^8.21.0)
 - **URL Unfurling**: unfurl.js ^6.4.0 for bookmark previews
 - **File Storage**: Persistent volumes for rooms (.rooms) and assets (.assets)
+
+**tldraw version pin.** The frontend (`tldraw/package.json`: `@tldraw/tldraw`, `@tldraw/sync`) and the sync backend (`tldraw-sync-backend/package.json` + `package-lock.json`: `@tldraw/sync-core`) are pinned to the same exact version, currently **5.4.2**. Both sides must always move together: a newer client refuses an older server (`SERVER_TOO_OLD`), and server APIs change between minors (5.4 removed `TLSocketRoom.getSnapshot()`). Dependabot bumps them as one grouped PR, and the `tldraw-parity.yml` CI job fails if the versions differ or a real client↔server round-trip does not persist a room.
 
 **Infrastructure:**
 - **Containerization**: Docker & Docker Compose with multi-service orchestration
@@ -387,7 +394,7 @@ lsof -i :80-8083
 
 # Use custom ports in .env
 HTTPS_PORT=8443
-HTTP_REDIRECT_PORT=8080
+HTTP_PORT=8081
 ```
 
 ### Container Issues

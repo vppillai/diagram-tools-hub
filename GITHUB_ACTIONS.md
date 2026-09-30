@@ -30,7 +30,30 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Quick start instructions
 - ✅ Feature highlights
 
-### 3. Dependabot Automation (`dependabot.yml`)
+### 3. tldraw Parity & Lint (`tldraw-parity.yml`)
+
+**Triggers:**
+- Push to `main`
+- Pull requests to `main`
+
+**Jobs:**
+- **parity** — the tldraw frontend and sync backend must run the exact same tldraw version:
+  - ✅ `@tldraw/tldraw`, `@tldraw/sync` (frontend `package.json`) and `@tldraw/sync-core` (backend `package.json` and `package-lock.json`) are exact pins with identical versions
+  - ✅ The `@tldraw/sync-core` the frontend actually resolves equals the backend's
+  - ✅ `vite build` of the frontend
+  - ✅ Real round-trip: starts `server.js`, connects a `TLSyncClient` from the frontend's `node_modules` (`tldraw/tests/sync-parity.mjs`), writes a page and waits until it is persisted in `.rooms/<room>`; fails on sync errors, timeout (20 s) or any error in the server log
+- **lint**:
+  - ✅ actionlint on all workflows
+  - ✅ `shellcheck -S warning` on `manage-config.sh` and `install-service.sh`
+  - ✅ `nginx -t` of the rendered http and https configs (via `manage-config.sh generate-nginx-config`, which validates in a throwaway `nginx:alpine` container)
+
+Run the round-trip locally: `cd tldraw-sync-backend && npm ci && PORT=3901 node server.js`, then `cd tldraw && npm install && node tests/sync-parity.mjs`.
+
+### 4. Dependabot (`.github/dependabot.yml`)
+
+Weekly updates for npm (`/tldraw` and `/tldraw-sync-backend` in one entry), GitHub Actions and the Node base images. `tldraw` and `@tldraw/*` are grouped so frontend and backend bump in the same PR (the parity job rejects a one-sided bump). Node major base-image bumps are ignored; minor/patch still arrive.
+
+### 5. Dependabot Automation
 
 **Triggers:**
 - Dependabot pull requests
@@ -41,7 +64,7 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Automated testing
 - ✅ PR comments with status
 
-### 4. Security Scanning (`security.yml`)
+### 6. Security Scanning (`security.yml`)
 
 **Triggers:**
 - Weekly scheduled scans (Mondays at 2 AM)
@@ -53,7 +76,6 @@ This repository includes comprehensive GitHub Actions workflows for CI/CD, secur
 - ✅ Snyk security analysis
 - ✅ OWASP ZAP web application scanning
 - ✅ Secret detection with TruffleHog
-- ✅ Bandit Python security linting
 - ✅ Automated PR comments with findings
 
 ## 📋 How to Use
@@ -80,6 +102,7 @@ The workflow will:
 Most workflows run automatically:
 
 - **CI/CD**: Runs on every push and PR
+- **tldraw parity & lint**: Runs on pushes to `main` and every PR
 - **Security**: Runs weekly and on PRs
 - **Dependabot**: Automatically handles dependency updates
 
