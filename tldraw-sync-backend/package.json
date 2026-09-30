@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@tldraw/sync-core": "5.4.2",
-    "ws": "^8.21.0",
+    "ws": "^8.22.0",
     "unfurl.js": "^6.4.0"
   }
 }
