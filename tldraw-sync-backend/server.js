@@ -340,9 +340,16 @@ async function readSnapshotIfExists(roomId) {
         return JSON.parse(data) ?? undefined
     } catch (err) {
         if (err.code === 'ENOENT') return undefined  // new room
-        // Unreadable or unparseable: move it aside so the first persist of
-        // the (now empty) room cannot overwrite what may be recoverable.
-        // If the rename fails too, refuse to load rather than risk that.
+        // Only a file that was read but does not parse is quarantined. Any
+        // other read error (EACCES, EIO, EISDIR...) says nothing about the
+        // data, so refuse to load the room instead of opening it empty.
+        if (!(err instanceof SyntaxError)) {
+            console.error(`Cannot read snapshot for room ${roomId}: ${err.message} — refusing to load it`)
+            throw err
+        }
+        // Unparseable: move it aside so the first persist of the (now empty)
+        // room cannot overwrite what may be recoverable. If the rename fails
+        // too, refuse to load rather than risk that.
         const quarantine = `${filePath}.corrupt-${Date.now()}`
         await rename(filePath, quarantine)
         console.error(`!!! CORRUPT ROOM SNAPSHOT: ${roomId} could not be loaded (${err.message}). ` +
