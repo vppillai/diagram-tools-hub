@@ -1,28 +1,24 @@
 version: 2
 updates:
-  # Enable version updates for npm
+  # npm for both tldraw packages in ONE entry so the `tldraw` group can bump
+  # frontend (@tldraw/tldraw, @tldraw/sync) and backend (@tldraw/sync-core)
+  # in the same PR — the two sides must run the exact same tldraw version
+  # (see tldraw-parity.yml). Everything else (ws, unfurl.js, react, vite...)
+  # still gets its own PRs.
   - package-ecosystem: "npm"
-    directory: "/tldraw"
+    directories:
+      - "/tldraw"
+      - "/tldraw-sync-backend"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - "vppillai"
-    assignees:
-      - "vppillai"
-    commit-message:
-      prefix: "npm"
-      include: "scope"
-
-  - package-ecosystem: "npm"
-    directory: "/tldraw-sync-backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 10
+    groups:
+      tldraw:
+        patterns:
+          - "tldraw"
+          - "@tldraw/*"
     reviewers:
       - "vppillai"
     assignees:
@@ -64,6 +60,11 @@ updates:
       - "vppillai"
     assignees:
       - "vppillai"
+    # Node major bumps (e.g. 22 -> 26) are deliberate upgrades, not
+    # weekly noise; minor/patch base-image updates still come through.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "docker"
       include: "scope"

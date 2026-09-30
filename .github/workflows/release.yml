@@ -70,7 +70,7 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           # Strip any leading 'v', validate x.y.z, re-add 'v'.
-          CLEAN=$(echo "$INPUT_VERSION" | sed 's/^v//')
+          CLEAN="${INPUT_VERSION#v}"
           if ! echo "$CLEAN" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Version must be x.y.z (received: $INPUT_VERSION)"
             exit 1

@@ -95,12 +95,14 @@ Key variables in `.env`:
 ```bash
 HTTP_PORT=8080              # HTTP port (when HTTPS disabled)
 HTTPS_PORT=8080             # HTTPS port (currently set to 8080)
-HTTP_REDIRECT_PORT=80       # HTTP redirect port
-SSL_DOMAIN=localhost        # SSL certificate domain
-TLDRAW_DEBUG_PANEL=true     # TLDraw debug panel (enabled)
-NODE_ENV=production         # Node.js environment
+SSL_DOMAIN=localhost        # SSL certificate domain; only Host served in HTTPS mode (others get 421)
+EXTERNAL_TOOLS=""           # optional landing-page cards: Name|URL|Description[|LogoURL];...
+TLDRAW_LICENSE_KEY=         # required for non-localhost tldraw deploys (baked in at build)
+#ROOM_RETENTION_DAYS=90     # unloaded rooms older than this are deleted
+#ASSET_RETENTION_DAYS=90    # unreferenced assets older than this are deleted
 COMPOSE_PROJECT_NAME=diagram-tools-hub  # Docker Compose project name
 ```
+`.env` is auto-created from `.env.example` only on a fresh install (no `certs/`); otherwise a missing `.env` is a hard error.
 
 ## Development Notes
 
@@ -146,8 +148,9 @@ COMPOSE_PROJECT_NAME=diagram-tools-hub  # Docker Compose project name
 ## Technology Stack
 
 ### TLDraw Dependencies
-- **Frontend**: React 19, Vite 8, @tldraw/tldraw ^5.0.0, @tldraw/sync ^5.0.0
-- **Backend**: Node.js 22, @tldraw/sync-core ^5.0.0, WebSocket (ws ^8.20.0)
+- **Frontend**: React 19, Vite 8, @tldraw/tldraw 5.4.2, @tldraw/sync 5.4.2 (exact pins)
+- **Backend**: Node.js 22, @tldraw/sync-core 5.4.2 (exact pin, locked), WebSocket (ws ^8.21.0)
+- **Version parity is mandatory**: frontend and backend tldraw versions must be identical and always bumped together (a newer client rejects an older server with `SERVER_TOO_OLD`; server APIs change between minors, e.g. 5.4 removed `getSnapshot()` in favour of `getCurrentSnapshot()`). CI `tldraw-parity.yml` enforces this with a real round-trip test (`tldraw/tests/sync-parity.mjs`); Dependabot groups `tldraw`/`@tldraw/*` across both directories.
 - **Additional**: unfurl.js ^6.4.0 for URL preview functionality
 - **Runtime**: nginx:alpine for the static SPA bundle; non-root user inside both tldraw and tldraw-sync containers
 
