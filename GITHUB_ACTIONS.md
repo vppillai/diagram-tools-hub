@@ -53,16 +53,15 @@ Run the round-trip locally: `cd tldraw-sync-backend && npm ci && PORT=3901 node 
 
 Weekly updates for npm (`/tldraw` and `/tldraw-sync-backend` in one entry), GitHub Actions and the Node base images. `tldraw` and `@tldraw/*` are grouped so frontend and backend bump in the same PR (the parity job rejects a one-sided bump). Node major base-image bumps are ignored; minor/patch still arrive.
 
-### 5. Dependabot Automation
+### 5. Dependabot pull requests
 
-**Triggers:**
-- Dependabot pull requests
+There is no auto-approve or auto-merge workflow. Dependabot only opens version-update PRs from `.github/dependabot.yml` (every Monday 09:00, up to 10 open per ecosystem, assigned to and review-requested from `vppillai`):
 
-**Features:**
-- ✅ Auto-approve dependency updates
-- ✅ Enable auto-merge for security patches
-- ✅ Automated testing
-- ✅ PR comments with status
+- **npm** — one entry covering `/tldraw` and `/tldraw-sync-backend`. `tldraw` and `@tldraw/*` are grouped into a single PR across both directories, because frontend and backend must run the exact same tldraw version; other packages get their own PRs. Commit prefix `npm`.
+- **docker** — base images of `/tldraw/Dockerfile` and `/tldraw-sync-backend/Dockerfile`. Node major bumps are ignored (a Node major is a deliberate upgrade); minor/patch come through. Commit prefix `docker`.
+- **github-actions** — action versions used by the workflows. Commit prefix `ci`.
+
+Dependabot PRs run the normal PR checks (CI/CD, tldraw parity & lint, security) and are reviewed and merged manually.
 
 ### 6. Security Scanning (`security.yml`)
 
@@ -104,7 +103,7 @@ Most workflows run automatically:
 - **CI/CD**: Runs on every push and PR
 - **tldraw parity & lint**: Runs on pushes to `main` and every PR
 - **Security**: Runs weekly and on PRs
-- **Dependabot**: Automatically handles dependency updates
+- **Dependabot**: Opens weekly version-update PRs; they are reviewed and merged manually
 
 ### Manual Triggers
 

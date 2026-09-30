@@ -844,6 +844,14 @@ services:
       - tldraw-sync
       - whiteboard
     restart: unless-stopped
+    # Health only; no service_healthy gating, so a slow drawio cannot keep
+    # the hub down. 127.0.0.1 is exempt from the HTTPS 421 host guard.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--no-check-certificate", "https://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # Draw.io container
   drawio:
@@ -853,6 +861,12 @@ services:
       - DRAWIO_BASE_URL=/drawio
       - DRAWIO_CONFIG={"compressXml":false,"fontCss":"","customFonts":[],"libraries":"general;uml;er;bpmn;flowchart;basic;arrows2","enabledLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","defaultLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","autosave":true,"formatDiff":false}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # Excalidraw container
   excalidraw:
@@ -897,11 +911,18 @@ services:
       args:
         BASE_PATH: /whiteboard/
     container_name: whiteboard-app
+    # The image declares VOLUME /data but the server is stateless; a named
+    # volume stops every down/up from leaving another anonymous volume.
+    volumes:
+      - whiteboard-data:/data
     restart: unless-stopped
 
 networks:
   default:
     name: diagram-tools-network
+
+volumes:
+  whiteboard-data:
 EOF
 
     log_info "Updated docker-compose configuration for HTTPS"
@@ -934,6 +955,14 @@ services:
       - tldraw-sync
       - whiteboard
     restart: unless-stopped
+    # Health only; no service_healthy gating, so a slow drawio cannot keep
+    # the hub down. 127.0.0.1 is exempt from the HTTPS 421 host guard.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # Draw.io container
   drawio:
@@ -943,6 +972,12 @@ services:
       - DRAWIO_BASE_URL=/drawio
       - DRAWIO_CONFIG={"compressXml":false,"fontCss":"","customFonts":[],"libraries":"general;uml;er;bpmn;flowchart;basic;arrows2","enabledLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","defaultLibraries":"general;uml;er;bpmn;flowchart;basic;arrows2","autosave":true,"formatDiff":false}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # Excalidraw container
   excalidraw:
@@ -987,11 +1022,18 @@ services:
       args:
         BASE_PATH: /whiteboard/
     container_name: whiteboard-app
+    # The image declares VOLUME /data but the server is stateless; a named
+    # volume stops every down/up from leaving another anonymous volume.
+    volumes:
+      - whiteboard-data:/data
     restart: unless-stopped
 
 networks:
   default:
     name: diagram-tools-network
+
+volumes:
+  whiteboard-data:
 EOF
 
     log_info "Created HTTP-only docker-compose configuration"
@@ -1310,8 +1352,10 @@ show_tldraw_room_stats() {
     else
         # Fallback to direct file system analysis
         if docker exec "$sync_container" test -d .rooms 2>/dev/null; then
-            # Count rooms
-            local room_count=$(docker exec "$sync_container" find .rooms -name "*.tldr" 2>/dev/null | wc -l)
+            # Count rooms. Snapshots are named exactly <roomId> (no extension);
+            # skip atomic-write temps and quarantined .corrupt-* files, as
+            # isRoomFile() in tldraw-sync-backend/server.js does.
+            local room_count=$(docker exec "$sync_container" find .rooms -maxdepth 1 -type f ! -name ".*" ! -name "*.corrupt-*" ! -name "*.tmp" ! -name "*.tmp-*" 2>/dev/null | wc -l)
             echo "   Total rooms: $room_count"
             
             # Room sizes
@@ -1319,13 +1363,13 @@ show_tldraw_room_stats() {
             docker exec "$sync_container" du -sh .rooms 2>/dev/null || echo "   Unable to calculate room storage"
             
             # Recent rooms (last 24 hours)
-            local recent_rooms=$(docker exec "$sync_container" find .rooms -name "*.tldr" -mtime -1 2>/dev/null | wc -l)
+            local recent_rooms=$(docker exec "$sync_container" find .rooms -maxdepth 1 -type f ! -name ".*" ! -name "*.corrupt-*" ! -name "*.tmp" ! -name "*.tmp-*" -mtime -1 2>/dev/null | wc -l)
             echo "   Active rooms (24h): $recent_rooms"
             
             # Top 5 largest rooms
             echo ""
             echo "   Largest rooms:"
-            docker exec "$sync_container" find .rooms -name "*.tldr" -exec du -h {} \; 2>/dev/null | sort -hr | head -5 | sed 's/^/   /'
+            docker exec "$sync_container" find .rooms -maxdepth 1 -type f ! -name ".*" ! -name "*.corrupt-*" ! -name "*.tmp" ! -name "*.tmp-*" -exec du -h {} \; 2>/dev/null | sort -hr | head -5 | sed 's/^/   /'
         else
             echo "   No room data found (.rooms directory not present)"
         fi
@@ -1361,7 +1405,8 @@ show_tldraw_room_stats() {
     else
         # Fallback to direct file system analysis
         if docker exec "$sync_container" test -d .assets 2>/dev/null; then
-            local asset_count=$(docker exec "$sync_container" find .assets -type f 2>/dev/null | wc -l)
+            # <id>.meta.json sidecars are metadata, not assets
+            local asset_count=$(docker exec "$sync_container" find .assets -maxdepth 1 -type f ! -name "*.meta.json" 2>/dev/null | wc -l)
             echo "   Total assets: $asset_count"
             echo "   Storage usage:"
             docker exec "$sync_container" du -sh .assets 2>/dev/null || echo "   Unable to calculate asset storage"

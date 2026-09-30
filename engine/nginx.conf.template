@@ -101,6 +101,19 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            # Privacy: the upstream index.html has an inline script that
+            # injects scripts.simpleanalyticscdn.com/latest.js, which beacons
+            # our hostname to queue.simpleanalyticscdn.com. The JS bundles do
+            # not load it (they only call window.sa_event if it exists), so
+            # blanking the src in the HTML is enough: a script with an empty
+            # src fires "error" without any request. The string is exact for
+            # the digest-pinned image; re-check it when bumping excalidraw.
+            # Accept-Encoding "" makes the upstream send plain HTML, which
+            # sub_filter needs.
+            proxy_set_header Accept-Encoding "";
+            sub_filter '"https://scripts.simpleanalyticscdn.com/latest.js"' '""';
+            sub_filter_once off;
+            sub_filter_types text/html;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
@@ -124,8 +137,11 @@ ${SSL_CERT_BLOCK}${SECURITY_HEADERS}${HOST_GUARD}
         # Vite emits hash-named bundles under /assets/ — the tldraw nginx
         # serves them at /assets/foo.js, but the hub mount surfaces them
         # at /tldraw/assets/foo.js. Strip the /tldraw prefix before
-        # forwarding so the upstream finds the file.
-        location ~ ^/tldraw/assets/.*\.(js|css|woff2?|ttf|otf|png|jpg|svg)$ {
+        # forwarding so the upstream finds the file. A ^~ prefix match (not
+        # an extension regex) so every asset type is stripped: before, an
+        # unlisted extension fell through to /tldraw/ and got index.html
+        # with 200. ^~ also stops nginx from trying the regex locations.
+        location ^~ /tldraw/assets/ {
             rewrite ^/tldraw(.*)$ $1 break;
             proxy_pass http://tldraw_backend;
             proxy_set_header Host $host;
