@@ -9,6 +9,26 @@ For commit-level detail, see the auto-generated body of each
 
 ## [Unreleased]
 
+### Added
+
+- **Compose healthchecks for `engine` and `drawio`** (both HTTPS and HTTP compose). The engine probes its own `/health` (`wget` to `https://127.0.0.1/health` with `--no-check-certificate` in HTTPS mode — loopback is exempt from the 421 host guard — or `http://127.0.0.1/health`); drawio probes `http://127.0.0.1:8080/` with `curl` (the image ships curl, not wget). 30 s interval, 5 s timeout, 3 retries, 60 s start period. Status only: the engine does not wait on `service_healthy`, so a slow drawio cannot keep the hub down.
+
+### Fixed
+
+- **Every tldraw asset now has its `/tldraw` prefix stripped.** `/tldraw/assets/` is a `^~` prefix location instead of an extension regex; an asset with an unlisted extension (e.g. `.webp`, `.json`, `.wasm`) used to fall through to `/tldraw/` and get the SPA's `index.html` with `200`. Non-asset `/tldraw/` paths are unchanged (Vite dev mode needs the prefix).
+- **`tldraw-rooms` / `tldraw-monitor` file-system fallback counted zero rooms.** It looked for `*.tldr`, but snapshots are named exactly `<roomId>`. Rooms are now regular files in `.rooms` other than dotfiles, `*.tmp`, `*.tmp-*` and `*.corrupt-*` (the same rule as the sync server's `isRoomFile()`); assets are regular files in `.assets` other than `*.meta.json` sidecars.
+- **Whiteboard no longer leaves an anonymous volume per `down`/`up`.** The image declares `VOLUME /data`; compose now mounts a named `whiteboard-data` volume there (declared under a new top-level `volumes:`).
+
+### Security
+
+- **Excalidraw no longer sends analytics.** The upstream `index.html` has an inline script that loads `scripts.simpleanalyticscdn.com/latest.js`, which beacons the hostname to `queue.simpleanalyticscdn.com`. The engine's `/excalidraw/` location blanks that `src` with `sub_filter` (upstream asked for uncompressed HTML via `Accept-Encoding: ""`); a script with an empty `src` fails without a request. The JS bundles do not reference simpleanalytics. The matched string is exact for the digest-pinned image; re-check it when bumping excalidraw.
+
+### Documentation
+
+- **GITHUB_ACTIONS.md** no longer describes a Dependabot auto-approve/auto-merge workflow that does not exist. It now describes the actual `dependabot.yml` updates (npm with `tldraw` grouped across `/tldraw` and `/tldraw-sync-backend`, docker ignoring Node majors, GitHub Actions) and that the PRs are reviewed and merged manually.
+
+## [1.11.0] — 2026-09-30
+
 ### Security
 
 - **Uploaded assets can no longer carry stored XSS.** The sync server sniffs every upload's magic bytes and only accepts PNG, JPEG, GIF, WebP, AVIF, SVG, MP4, WebM and QuickTime (anything else: `415`). The detected type is kept in an `<id>.meta.json` sidecar and assets are served with that `Content-Type`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` and `Cache-Control: private, max-age=86400`. SVG stays inline so tldraw can render it; the sandbox CSP neutralises scripts when opened directly. Assets uploaded before this release are sniffed on read.
@@ -531,7 +551,8 @@ key as an env var so non-localhost deployments are unblocked.
 
 ---
 
-[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.10.3...HEAD
+[Unreleased]: https://github.com/vppillai/diagram-tools-hub/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/vppillai/diagram-tools-hub/compare/v1.10.3...v1.11.0
 [1.4.2]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.2
 [1.4.1]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.1
 [1.4.0]: https://github.com/vppillai/diagram-tools-hub/releases/tag/v1.4.0
