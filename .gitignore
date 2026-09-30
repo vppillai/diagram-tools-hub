@@ -11,6 +11,7 @@ certs/
 
 # Generated configuration files
 engine/nginx.conf
+engine/nginx.conf.new
 engine/html/external-tools.js
 docker-compose.yml
 

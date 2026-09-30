@@ -2,28 +2,43 @@
 
 # Diagram Tools Hub Configuration Manager
 
+# The monitoring helpers below use `local x=$(cmd)` throughout on purpose:
+# a failing probe must print an empty value, not abort the dashboard via
+# set -e, which is exactly what SC2155 warns about.
+# shellcheck disable=SC2155
+
 set -e  # Exit on any error
 
 # Load environment variables
 load_env() {
-    if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-        cp .env.example .env
-        echo "Created .env from .env.example — edit it for your deployment."
+    if [ ! -f ".env" ]; then
+        # Only a fresh install (no certs yet) may be bootstrapped from the
+        # example. On an existing install a missing .env means the operator's
+        # settings (SSL_DOMAIN, ports, EXTERNAL_TOOLS...) are gone; silently
+        # regenerating defaults would re-render nginx for "localhost".
+        if [ ! -d "./certs" ] && [ -f ".env.example" ]; then
+            cp .env.example .env
+            echo "Created .env from .env.example — edit it for your deployment."
+        else
+            log_error ".env is missing but this is not a fresh install (./certs exists)."
+            log_error "Restore your .env (e.g. from a config-backup-*.tar.gz, or copy .env.example and re-apply your settings), then re-run."
+            exit 1
+        fi
     fi
-    if [ -f ".env" ]; then
-        # Source as shell so quoted values may contain spaces, '|' and ';'
-        # (EXTERNAL_TOOLS needs all three). Quote such values in .env.
-        set -a; . ./.env; set +a
-    fi
-    
+    # Source as shell so quoted values may contain spaces, '|' and ';'
+    # (EXTERNAL_TOOLS needs all three). Quote such values in .env.
+    set -a; . ./.env; set +a
+
     # Set defaults if not specified
     export HTTP_PORT=${HTTP_PORT:-8080}
     export HTTPS_PORT=${HTTPS_PORT:-443}
     export SSL_DOMAIN=${SSL_DOMAIN:-localhost}
-}
 
-# Load environment variables at startup
-load_env
+    if [ -z "${_SSL_DOMAIN_WARNED:-}" ] && [ -f "./certs/cert.pem" ] && [ "$SSL_DOMAIN" = "localhost" ]; then
+        _SSL_DOMAIN_WARNED=1
+        log_warning "HTTPS certificates exist but SSL_DOMAIN=localhost: the hub will answer 421 to every hostname except localhost. Set SSL_DOMAIN in .env."
+    fi
+}
 
 # Colors for output
 RED='\033[0;31m'
@@ -74,6 +89,12 @@ log_warning() {
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# Load environment variables at startup (help works without a .env).
+case "${1:-}" in
+    help|--help|-h|"") ;;
+    *) load_env ;;
+esac
 
 show_help() {
     echo "Usage: $0 [COMMAND] [OPTIONS]"
@@ -296,6 +317,7 @@ rebuild_services() {
         log_info "Rebuilding and restarting $service service..."
         sudo docker compose build --no-cache "$service"
         sudo docker compose up -d "$service"
+        reload_engine_nginx
         log_success "$service service rebuilt and started successfully!"
         show_status
     else
@@ -341,6 +363,7 @@ rebuild_dev_services() {
         log_info "Rebuilding and restarting $service service in development mode..."
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache "$service"
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d "$service"
+        reload_engine_nginx
         log_success "$service service rebuilt and started successfully in development mode!"
         show_status
     else
@@ -354,6 +377,7 @@ rebuild_dev_services() {
 
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
         sudo docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+        reload_engine_nginx
         log_success "All services rebuilt and started successfully in development mode!"
         
         # Show access information
@@ -581,6 +605,7 @@ http_only() {
 
     log_info "Restarting services in HTTP-only mode..."
     sudo docker compose up -d --remove-orphans
+    reload_engine_nginx
     
     log_success "Switched to HTTP-only mode successfully!"
     log_info "Services available at:"
@@ -611,6 +636,7 @@ render_nginx_config() {
     local mode="${1:-http}"
     local template="./engine/nginx.conf.template"
     local out="./engine/nginx.conf"
+    local candidate="./engine/nginx.conf.new"
 
     if [ ! -f "$template" ]; then
         log_error "Nginx template missing: $template"
@@ -644,8 +670,15 @@ render_nginx_config() {
             # (correct SNI) instead. Only SSL_DOMAIN and loopback are served.
             # $host is lowercased by nginx; quote the value so a domain with
             # unusual characters cannot change the map's semantics.
-            local hub_host; hub_host="$(printf '%s' "${SSL_DOMAIN}" | tr 'A-Z' 'a-z')"
-            export HOST_GUARD_MAP=$'\n    map $host $misdirected {\n        default      1;\n        localhost    0;\n        127.0.0.1    0;\n        "[::1]"      0;\n        "'"${hub_host}"$'"  0;\n    }\n'
+            local hub_host hub_entry=""
+            hub_host="$(printf '%s' "${SSL_DOMAIN}" | tr 'A-Z' 'a-z')"
+            # A duplicate key is a hard nginx error ("conflicting parameter"),
+            # so SSL_DOMAIN=localhost must not repeat the built-in entries.
+            case "$hub_host" in
+                localhost|127.0.0.1|"[::1]") ;;
+                *) hub_entry=$'        "'"${hub_host}"$'"  0;\n' ;;
+            esac
+            export HOST_GUARD_MAP=$'\n    map $host $misdirected {\n        default      1;\n        localhost    0;\n        127.0.0.1    0;\n        "[::1]"      0;\n'"${hub_entry}"$'    }\n'
             export HOST_GUARD=$'\n        if ($misdirected) { return 421; }\n'
             ;;
         http|ci)
@@ -662,12 +695,62 @@ render_nginx_config() {
             ;;
     esac
 
+    # shellcheck disable=SC2016  # the $-names are envsubst's allow-list, not shell expansions
     envsubst '${LISTEN_DIRECTIVE} ${SSL_PROTOCOLS_BLOCK} ${SSL_CERT_BLOCK} ${SECURITY_HEADERS} ${HOST_GUARD_MAP} ${HOST_GUARD}' \
-        < "$template" > "$out"
+        < "$template" > "$candidate"
 
     unset LISTEN_DIRECTIVE SSL_PROTOCOLS_BLOCK SSL_CERT_BLOCK SECURITY_HEADERS HOST_GUARD_MAP HOST_GUARD
 
+    # Never replace a working config with one nginx rejects: the running
+    # engine would refuse the reload, and the next container (re)start
+    # would crash-loop on it.
+    if ! validate_nginx_config "$mode" "$candidate"; then
+        rm -f "$candidate"
+        return 1
+    fi
+    # Overwrite in place (keeps the inode): the engine bind-mounts this
+    # single file, and a rename would leave the container on the old inode.
+    cat "$candidate" > "$out"
+    rm -f "$candidate"
+
     render_external_tools
+}
+
+# Run `nginx -t` on a rendered config in a throwaway nginx:alpine container.
+# Upstream names are pinned to 127.0.0.1 with --add-host so they resolve
+# whether or not the stack (and each service container) is running; on the
+# hub network when it exists. Skipped with a warning when docker is not
+# usable (e.g. a CI step without docker) or SKIP_NGINX_VALIDATE=1.
+# Usage: validate_nginx_config <mode> <file>
+validate_nginx_config() {
+    local mode="$1" file="$2" out h
+    if [ "${SKIP_NGINX_VALIDATE:-}" = "1" ]; then
+        log_warning "SKIP_NGINX_VALIDATE=1 — installing nginx config without 'nginx -t'"
+        return 0
+    fi
+    if ! command -v docker >/dev/null 2>&1 || ! sudo docker info >/dev/null 2>&1; then
+        log_warning "docker is not runnable — installing nginx config without 'nginx -t' validation"
+        return 0
+    fi
+    # The config goes in on stdin rather than as a bind mount: Docker Desktop
+    # can serve a stale cached copy of a file just rewritten at the same path.
+    local args=(--rm -i)
+    if sudo docker network inspect diagram-tools-network >/dev/null 2>&1; then
+        args+=(--network diagram-tools-network)
+    fi
+    for h in drawio excalidraw tldraw tldraw-sync whiteboard; do
+        args+=(--add-host "$h:127.0.0.1")
+    done
+    if [ "$mode" = "https" ]; then
+        args+=(-v "$(pwd)/certs/cert.pem:/etc/ssl/certs/cert.pem:ro"
+               -v "$(pwd)/certs/key.pem:/etc/ssl/private/key.pem:ro")
+    fi
+    if ! out="$(sudo docker run "${args[@]}" --entrypoint sh nginx:alpine \
+            -c 'cat > /etc/nginx/nginx.conf && exec nginx -t' < "$file" 2>&1)"; then
+        log_error "Rendered ${mode} nginx config failed 'nginx -t' — keeping the existing engine/nginx.conf:"
+        printf '%s\n' "$out" >&2
+        return 1
+    fi
 }
 
 # Write engine/html/external-tools.js from EXTERNAL_TOOLS so the landing page
@@ -941,11 +1024,15 @@ ensure_configs_exist() {
 # The sync backend runs as the unprivileged 'app' user (uid 100 / gid 101 in
 # the Alpine image). Docker creates missing bind-mount sources as root, which
 # made every snapshot write fail silently on a fresh install.
+# Usage: ensure_sync_data_dirs [--force]   (--force: chown -R even if the
+# top-level dir already looks right, e.g. after restoring a backup)
 ensure_sync_data_dirs() {
-    local d
+    local d force="${1:-}"
     for d in tldraw-sync-backend/.rooms tldraw-sync-backend/.assets; do
         mkdir -p "$d" 2>/dev/null || sudo mkdir -p "$d"
-        if [ "$(stat -c %u "$d" 2>/dev/null || stat -f %u "$d")" != "100" ]; then
+        if [ "$force" = "--force" ]; then
+            sudo chown -R 100:101 "$d"
+        elif [ "$(stat -c %u "$d" 2>/dev/null || stat -f %u "$d")" != "100" ]; then
             sudo chown -R 100:101 "$d" || log_warning "Could not chown $d to 100:101 — tldraw rooms will not persist"
         fi
     done
@@ -961,19 +1048,27 @@ prune_docker() {
 }
 
 backup_config() {
-    local backup_file="config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+    local backup_file p
+    backup_file="config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
     log_info "Creating configuration backup: $backup_file"
-    
-    # Everything else is reproducible from git + these inputs.
-    sudo tar -czf "$backup_file" \
-        .env certs tldraw-sync-backend/.rooms tldraw-sync-backend/.assets 2>/dev/null || true
-    
-    if [ -f "$backup_file" ]; then
-        log_success "Configuration backed up to: $backup_file"
-    else
-        log_error "Failed to create backup"
+
+    # Everything else is reproducible from git + these inputs. certs/ is
+    # absent in http-only installs; anything else missing is worth a warning.
+    local items=()
+    for p in .env certs tldraw-sync-backend/.rooms tldraw-sync-backend/.assets; do
+        if [ -e "$p" ]; then items+=("$p"); else log_warning "Not in backup (missing): $p"; fi
+    done
+
+    # The archive holds the TLS private key and all room data: create it
+    # 0600 (umask applies to sudo tar too) and hand it back to the operator.
+    if ! ( umask 077; sudo tar -czf "$backup_file" "${items[@]}" ); then
+        sudo rm -f "$backup_file"
+        log_error "tar failed — backup NOT created (see errors above)"
         exit 1
     fi
+    sudo chown "$(id -u):$(id -g)" "$backup_file"
+    chmod 600 "$backup_file"
+    log_success "Configuration backed up to: $backup_file"
 }
 
 restore_config() {
@@ -994,7 +1089,10 @@ restore_config() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         log_info "Restoring configuration from $backup_file..."
-        tar -xzf "$backup_file"
+        # sudo: room/asset files in the archive are owned by the container
+        # user (100:101); -p keeps the key's 0600 mode.
+        sudo tar -xzpf "$backup_file"
+        ensure_sync_data_dirs --force
         log_success "Configuration restored successfully!"
     else
         log_info "Restore operation cancelled."
@@ -1008,8 +1106,8 @@ restore_config() {
 # to already exist (they operate on a running stack). `generate-nginx-config`
 # is a CI-only path that doesn't touch the compose file.
 if [ ! -f "docker-compose.yml" ]; then
-    case "$1" in
-        generate-nginx-config|start|start-dev|http-only)
+    case "${1:-}" in
+        generate-nginx-config|start|start-dev|http-only|help|--help|-h|"")
             # These commands either bootstrap the file or don't need it.
             : ;;
         *)
@@ -1019,11 +1117,17 @@ if [ ! -f "docker-compose.yml" ]; then
     esac
 fi
 
-# Check if Docker is running
-if ! sudo docker info >/dev/null 2>&1; then
-    log_error "Docker is not running. Please start Docker and try again."
-    exit 1
-fi
+# Check if Docker is running (help and generate-nginx-config work without it;
+# the latter then skips nginx -t validation with a warning).
+case "${1:-}" in
+    help|--help|-h|""|generate-nginx-config) ;;
+    *)
+        if ! sudo docker info >/dev/null 2>&1; then
+            log_error "Docker is not running. Please start Docker and try again."
+            exit 1
+        fi
+        ;;
+esac
 
 
 # Service management functions
@@ -1160,6 +1264,7 @@ show_comprehensive_tldraw_monitor() {
     
     # Resource Usage
     echo "📊 Resource Usage:"
+    # shellcheck disable=SC2046  # word-split container IDs on purpose
     docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub")
     echo ""
     
@@ -1272,21 +1377,25 @@ show_system_metrics() {
     
     # Memory usage breakdown
     echo "🧠 Memory Usage Breakdown:"
+    # shellcheck disable=SC2046  # word-split container IDs on purpose
     docker stats --no-stream --format "{{.Container}}: {{.MemUsage}} ({{.MemPerc}})" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
     echo ""
     
     # CPU usage breakdown
     echo "⚡ CPU Usage Breakdown:"
+    # shellcheck disable=SC2046  # word-split container IDs on purpose
     docker stats --no-stream --format "{{.Container}}: {{.CPUPerc}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
     echo ""
     
     # Network I/O
     echo "🌐 Network I/O:"
+    # shellcheck disable=SC2046  # word-split container IDs on purpose
     docker stats --no-stream --format "{{.Container}}: {{.NetIO}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
     echo ""
     
     # Disk I/O
     echo "💾 Disk I/O:"
+    # shellcheck disable=SC2046  # word-split container IDs on purpose
     docker stats --no-stream --format "{{.Container}}: {{.BlockIO}}" $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub") | sort
     echo ""
     
@@ -1458,6 +1567,7 @@ show_realtime_stats() {
     echo ""
     
     # Show real-time stats
+    # shellcheck disable=SC2046  # word-split container IDs on purpose
     docker stats $(docker ps -q --filter "label=com.docker.compose.project=diagram-tools-hub")
 }
 
