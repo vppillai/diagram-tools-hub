@@ -75,9 +75,7 @@ const getRoomId = () => {
 // Asset store implementation (TLAssetStore).
 // v5: upload returns { src, meta? }, not bare URL.
 // v5: optional remove(assetIds) fires when shapes referencing the asset are
-// deleted. We look up each asset in the editor store, pull its URL, and call
-// DELETE on the upload endpoint. Event-driven cleanup augments the server's
-// periodic sweep.
+// deleted; ours is a no-op (see below) — cleanup is server-side by reference.
 const multiplayerAssets = {
     async upload(_asset, file) {
         const id = uniqueId()
@@ -106,27 +104,11 @@ const multiplayerAssets = {
     resolve(asset) {
         return asset.props.src
     },
-    // v5 TLAssetStore.remove — fired when shapes are deleted. Best-effort
-    // cleanup: looks up each asset in the live editor store, extracts the
-    // upload URL, and fires DELETE. Failures are logged, not surfaced —
-    // the server's periodic cleanup catches anything missed.
-    async remove(assetIds) {
-        const editor = typeof window !== 'undefined' ? window.editor : null
-        if (!editor) return
-        for (const id of assetIds) {
-            try {
-                const asset = editor.store.get(id)
-                const src = asset?.props?.src
-                if (src && src.includes('/tldraw-sync/uploads/')) {
-                    fetch(src, { method: 'DELETE' }).catch((err) => {
-                        console.warn(`Asset cleanup DELETE failed for ${id}:`, err)
-                    })
-                }
-            } catch (err) {
-                console.warn(`Asset cleanup lookup failed for ${id}:`, err)
-            }
-        }
-    },
+    // v5 TLAssetStore.remove — fired when shapes are deleted. Deliberately a
+    // no-op: deleting the file here broke undo, copy/paste and other rooms
+    // that still referenced the same upload. The sync server garbage-collects
+    // assets that no room references once they pass ASSET_RETENTION_DAYS.
+    async remove(_assetIds) {},
 }
 
 // Custom right-click context menu — visual quick-pick. Pattern mirrors

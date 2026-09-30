@@ -1,8 +1,13 @@
 import { TLSocketRoom } from '@tldraw/sync-core'
 import { WebSocketServer } from 'ws'
 import { createServer } from 'http'
+import { request as httpRequest } from 'http'
+import { request as httpsRequest } from 'https'
 import { readFile, writeFile, mkdir, readdir, stat, unlink, rename } from 'fs/promises'
 import { join } from 'path'
+import { BlockList, isIP } from 'net'
+import { lookup as dnsLookup } from 'dns/promises'
+import { createGunzip, createInflate, createBrotliDecompress } from 'zlib'
 import _unfurl from 'unfurl.js'
 
 const PORT = process.env.PORT || 3001
@@ -36,38 +41,172 @@ process.on('unhandledRejection', (reason) => {
     console.error('Unhandled promise rejection:', reason)
 })
 
-// Reject SSRF targets — only http(s) URLs to a *public* host. Blocks
-// loopback, RFC-1918 private ranges, link-local (incl. cloud IMDS at
-// 169.254.169.254), and IPv6 equivalents. Does not resolve DNS so it
-// can still be bypassed via a controlled hostname that resolves to a
-// private IP — for v1.4 we accept that risk. Full mitigation needs a
-// per-request DNS resolve + IP-range check.
-function isPublicUrl(rawUrl) {
+// ----- Unfurl SSRF guard ---------------------------------------------------
+// Every hop of an unfurl fetch must land on a public address. We resolve the
+// host ourselves, reject if ANY resolved address is non-public, and pin the
+// socket to exactly the addresses we validated (custom `lookup`) so a DNS
+// rebind between check and connect cannot redirect us to an internal host.
+const BLOCKED = new BlockList()
+for (const [net, prefix] of [
+    ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+    ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16],
+    ['224.0.0.0', 4], ['240.0.0.0', 4],
+]) BLOCKED.addSubnet(net, prefix, 'ipv4')
+for (const [net, prefix] of [
+    ['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8],
+]) BLOCKED.addSubnet(net, prefix, 'ipv6')
+
+// Expand an IPv6 address (optionally with a dotted-quad tail) to 8 numbers.
+function ipv6Groups(addr) {
+    let a = addr.toLowerCase()
+    if (a.includes('.')) {
+        const i = a.lastIndexOf(':')
+        const q = a.slice(i + 1).split('.').map(Number)
+        a = a.slice(0, i + 1) + ((q[0] << 8) | q[1]).toString(16) + ':' + ((q[2] << 8) | q[3]).toString(16)
+    }
+    const [head, tail] = a.split('::')
+    const h = head ? head.split(':') : []
+    if (tail === undefined) return h.map(g => parseInt(g, 16))
+    const t = tail ? tail.split(':') : []
+    return [...h, ...Array(8 - h.length - t.length).fill('0'), ...t].map(g => parseInt(g, 16))
+}
+
+function isPublicAddress(addr) {
+    try {
+        const family = isIP(addr)
+        if (family === 4) return !BLOCKED.check(addr, 'ipv4')
+        if (family !== 6) return false
+        const g = ipv6Groups(addr)
+        if (g.length !== 8 || g.some(n => !Number.isInteger(n) || n < 0 || n > 0xffff)) return false
+        // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d): judge
+        // by the embedded IPv4 address, which is what the kernel connects to.
+        if (g.slice(0, 5).every(n => n === 0) && (g[5] === 0xffff || g[5] === 0)) {
+            const v4 = `${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`
+            return !BLOCKED.check(v4, 'ipv4')
+        }
+        return !BLOCKED.check(addr, 'ipv6')
+    } catch {
+        return false
+    }
+}
+
+// Parse + resolve + validate one URL. Returns { url, addresses } or throws;
+// policy rejections carry code 'NOT_PUBLIC' (DNS failures keep their own).
+function notPublic(message) {
+    return Object.assign(new Error(message), { code: 'NOT_PUBLIC' })
+}
+async function resolvePublicUrl(rawUrl) {
     let parsed
-    try { parsed = new URL(rawUrl) } catch { return false }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
-    const host = parsed.hostname.toLowerCase()
-    if (!host) return false
-    if (host === 'localhost' || host === '0.0.0.0') return false
-    if (host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.')) return false
-    if (host.startsWith('169.254.')) return false
-    if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(host)) return false
-    if (host === '::1' || host.startsWith('[::1]')) return false
-    if (host.startsWith('fc') || host.startsWith('fd')) return false  // ULA
-    if (host.startsWith('fe80')) return false  // link-local v6
-    return true
+    try { parsed = new URL(rawUrl) } catch { throw notPublic('Invalid URL') }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw notPublic('Only http(s) URLs allowed')
+    const host = parsed.hostname.replace(/^\[|\]$/g, '')
+    if (!host) throw notPublic('Missing host')
+    const addresses = isIP(host)
+        ? [{ address: host, family: isIP(host) }]
+        : await dnsLookup(host, { all: true })
+    if (addresses.length === 0 || !addresses.every(a => isPublicAddress(a.address))) {
+        throw notPublic(`Host ${host} resolves to a non-public address`)
+    }
+    return { url: parsed, addresses }
+}
+
+const UNFURL_TIMEOUT_MS = 5000
+const UNFURL_MAX_BYTES = 1024 * 1024
+const UNFURL_MAX_REDIRECTS = 3
+
+// One GET with the socket pinned to pre-validated addresses. Resolves to a
+// WHATWG Response (what unfurl.js expects from a custom fetch). Body is
+// decompressed and truncated at UNFURL_MAX_BYTES — page metadata lives in
+// <head>, so a truncated body still unfurls.
+function pinnedGet(url, addresses, signal) {
+    return new Promise((resolve, reject) => {
+        const lookup = (_h, opts, cb) => opts && opts.all
+            ? cb(null, addresses)
+            : cb(null, addresses[0].address, addresses[0].family)
+        const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
+            method: 'GET',
+            lookup,
+            signal,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; DiagramToolsHub-unfurl/1.0)',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
+        }, (res) => {
+            const enc = String(res.headers['content-encoding'] || '').toLowerCase()
+            let body = res
+            if (enc === 'gzip' || enc === 'x-gzip') body = res.pipe(createGunzip())
+            else if (enc === 'deflate') body = res.pipe(createInflate())
+            else if (enc === 'br') body = res.pipe(createBrotliDecompress())
+            const chunks = []
+            let size = 0
+            let done = false
+            const finish = () => {
+                if (done) return
+                done = true
+                res.destroy()
+                const headers = {}
+                if (res.headers['content-type']) headers['content-type'] = res.headers['content-type']
+                if (res.headers.location) headers.location = res.headers.location
+                const status = res.statusCode >= 200 && res.statusCode <= 599 ? res.statusCode : 502
+                resolve(new Response(status === 204 || status === 304 ? null : Buffer.concat(chunks), { status, headers }))
+            }
+            body.on('data', (c) => {
+                if (done) return
+                const room = UNFURL_MAX_BYTES - size
+                chunks.push(c.length > room ? c.subarray(0, room) : c)
+                size += Math.min(c.length, room)
+                if (size >= UNFURL_MAX_BYTES) finish()
+            })
+            body.on('end', finish)
+            const fail = (e) => { if (!done) { done = true; reject(e) } }
+            body.on('error', fail)
+            res.on('error', fail)
+            res.on('close', () => { if (!res.complete) fail(new Error('Response aborted')) })
+        })
+        req.on('error', reject)
+        req.end()
+    })
+}
+
+// Custom fetch for unfurl.js: re-validates every redirect hop manually.
+async function safeFetch(rawUrl, signal) {
+    let target = rawUrl
+    for (let hop = 0; ; hop++) {
+        const { url, addresses } = await resolvePublicUrl(target)
+        const res = await pinnedGet(url, addresses, signal)
+        const location = res.headers.get('location')
+        if (![301, 302, 303, 307, 308].includes(res.status) || !location) return res
+        if (hop >= UNFURL_MAX_REDIRECTS) throw new Error('Too many redirects')
+        target = new URL(location, url).href
+    }
 }
 
 // Cleanup configuration
 const CLEANUP_CONFIG = {
-    // Room files older than this will be deleted (in milliseconds)
-    ROOM_RETENTION_PERIOD: parseInt(process.env.ROOM_RETENTION_DAYS || '7') * 24 * 60 * 60 * 1000, // 7 days default
-    // Asset files older than this will be deleted (in milliseconds)  
-    ASSET_RETENTION_PERIOD: parseInt(process.env.ASSET_RETENTION_DAYS || '30') * 24 * 60 * 60 * 1000, // 30 days default
+    // Room files not modified for this long are deleted, unless loaded (ms)
+    ROOM_RETENTION_PERIOD: parseInt(process.env.ROOM_RETENTION_DAYS || '90') * 24 * 60 * 60 * 1000, // 90 days default
+    // Asset files older than this are deleted if no room references them (ms)
+    ASSET_RETENTION_PERIOD: parseInt(process.env.ASSET_RETENTION_DAYS || '90') * 24 * 60 * 60 * 1000, // 90 days default
     // How often to run cleanup (in milliseconds)
     CLEANUP_INTERVAL: parseInt(process.env.CLEANUP_INTERVAL_HOURS || '6') * 60 * 60 * 1000, // 6 hours default
     // Enable/disable cleanup
     CLEANUP_ENABLED: process.env.CLEANUP_ENABLED !== 'false' // Enabled by default
+}
+
+// Files in DIR that are not room snapshots: in-flight/orphaned atomic-write
+// temp files and quarantined unparseable snapshots.
+const isTmpFile = (name) => /\.tmp(-\d+-\d+)?$/.test(name)
+const isCorruptFile = (name) => /\.corrupt-\d+$/.test(name)
+const isRoomFile = (name) => !name.startsWith('.') && !isTmpFile(name) && !isCorruptFile(name)
+const TMP_ORPHAN_AGE = 60 * 60 * 1000
+
+// A room is loaded while its map entry is an in-flight load or an open room.
+function isRoomLoaded(roomId) {
+    const entry = rooms.get(roomId)
+    if (!entry) return false
+    if (typeof entry.then === 'function') return true
+    return !entry.room.isClosed()
 }
 
 // Storage cleanup functions
@@ -81,55 +220,97 @@ async function cleanupOldRooms() {
         let cleaned = 0
 
         for (const file of roomFiles) {
-            // Skip orphan tmp files left from a crashed atomic write —
-            // they'll be cleaned on the next saveSnapshot rename.
-            if (file.endsWith('.tmp')) continue
-
+            if (file.startsWith('.') || isCorruptFile(file)) continue  // corrupt files are kept for the operator
             const filePath = join(DIR, file)
             const stats = await stat(filePath).catch(() => null)
-            if (!stats || (now - stats.mtime.getTime()) <= CLEANUP_CONFIG.ROOM_RETENTION_PERIOD) continue
+            if (!stats) continue
 
-            // Resolve a possible in-flight load promise before checking
-            // closed/active state. Without this, a Promise entry in the
-            // map would crash with `.room` undefined.
-            let roomState = rooms.get(file)
-            if (roomState && typeof roomState.then === 'function') {
-                try { roomState = await roomState } catch { roomState = null }
+            // Temp files are only live for the duration of one write; an old
+            // one is debris from a crash mid-write.
+            if (isTmpFile(file)) {
+                if (now - stats.mtime.getTime() > TMP_ORPHAN_AGE) await unlink(filePath).catch(() => {})
+                continue
             }
-            if (!roomState || roomState.room.isClosed() || roomState.room.getNumActiveSessions() === 0) {
-                await unlink(filePath)
-                rooms.delete(file)
-                cleaned++
-                console.log(`Cleaned up old room: ${file}`)
-            }
+
+            if (now - stats.mtime.getTime() <= CLEANUP_CONFIG.ROOM_RETENTION_PERIOD) continue
+            // Never delete the file behind a loaded room: an open but
+            // unedited room would otherwise lose its only copy. Checked
+            // right before unlink (same tick) so a concurrent load can't slip in.
+            if (isRoomLoaded(file)) continue
+            await unlink(filePath)
+            cleaned++
+            console.log(`Cleaned up old room: ${file}`)
         }
-        
+
         console.log(`Room cleanup completed: ${cleaned} rooms removed`)
     } catch (error) {
         console.error('Error during room cleanup:', error)
     }
 }
 
+// Assets are garbage-collected by reference: an asset is removed only when it
+// is past ASSET_RETENTION_PERIOD AND no room (on disk or loaded) mentions its
+// id. Clients no longer DELETE on shape removal, since undo / copy-paste /
+// other rooms may still point at the same file.
 async function cleanupOldAssets() {
     if (!CLEANUP_CONFIG.CLEANUP_ENABLED) return
 
     try {
         console.log('Starting asset cleanup...')
         const assetFiles = await readdir(ASSETS_DIR).catch(() => [])
+        const present = new Set(assetFiles)
         const now = Date.now()
         let cleaned = 0
 
+        const candidates = new Set()
         for (const file of assetFiles) {
-            const filePath = join(ASSETS_DIR, file)
-            const stats = await stat(filePath).catch(() => null)
-            
+            if (isMetaFile(file)) {
+                // Sidecar whose asset is gone (e.g. deleted by hand).
+                if (!present.has(file.slice(0, -META_SUFFIX.length))) {
+                    await unlink(join(ASSETS_DIR, file)).catch(() => {})
+                }
+                continue
+            }
+            const stats = await stat(join(ASSETS_DIR, file)).catch(() => null)
             if (stats && (now - stats.mtime.getTime()) > CLEANUP_CONFIG.ASSET_RETENTION_PERIOD) {
-                await unlink(filePath)
-                cleaned++
-                console.log(`Cleaned up old asset: ${file}`)
+                candidates.add(file)
             }
         }
-        
+
+        if (candidates.size > 0) {
+            // ponytail: substring scan of every snapshot, O(rooms x candidates);
+            // fine for hundreds of rooms, index asset refs if it ever isn't.
+            const dropReferenced = (text) => {
+                for (const id of candidates) if (text.includes(id)) candidates.delete(id)
+            }
+            for (const state of rooms.values()) {
+                if (!state || typeof state.then === 'function' || state.room.isClosed()) continue
+                dropReferenced(JSON.stringify(state.room.getCurrentSnapshot()))
+            }
+            // Any read error other than a vanished file aborts the sweep:
+            // better to keep garbage than delete a referenced asset.
+            const roomFiles = await readdir(DIR).catch((err) => {
+                if (err.code === 'ENOENT') return []
+                throw err
+            })
+            for (const file of roomFiles) {
+                if (candidates.size === 0) break
+                if (file.startsWith('.')) continue
+                const text = await readFile(join(DIR, file), 'utf8').catch((err) => {
+                    if (err.code === 'ENOENT') return ''
+                    throw err
+                })
+                dropReferenced(text)
+            }
+        }
+
+        for (const file of candidates) {
+            await unlink(join(ASSETS_DIR, file))
+            await unlink(join(ASSETS_DIR, file + META_SUFFIX)).catch(() => {})
+            cleaned++
+            console.log(`Cleaned up unreferenced old asset: ${file}`)
+        }
+
         console.log(`Asset cleanup completed: ${cleaned} assets removed`)
     } catch (error) {
         console.error('Error during asset cleanup:', error)
@@ -146,24 +327,46 @@ async function performCleanup() {
 // Room management
 const rooms = new Map()
 
+// Most recent snapshot write failure across all rooms; surfaced by the
+// health endpoints so a full/read-only disk doesn't fail silently.
+let lastPersistError = null
+const PERSIST_ERROR_WINDOW_MS = 10 * 60 * 1000
+
 async function readSnapshotIfExists(roomId) {
+    const filePath = join(DIR, roomId)
+    let data
     try {
-        const data = await readFile(join(DIR, roomId))
-        return JSON.parse(data.toString()) ?? undefined
-    } catch {
+        data = await readFile(filePath, 'utf8')
+        return JSON.parse(data) ?? undefined
+    } catch (err) {
+        if (err.code === 'ENOENT') return undefined  // new room
+        // Unreadable or unparseable: move it aside so the first persist of
+        // the (now empty) room cannot overwrite what may be recoverable.
+        // If the rename fails too, refuse to load rather than risk that.
+        const quarantine = `${filePath}.corrupt-${Date.now()}`
+        await rename(filePath, quarantine)
+        console.error(`!!! CORRUPT ROOM SNAPSHOT: ${roomId} could not be loaded (${err.message}). ` +
+            `Original preserved as ${quarantine}; room starts empty.`)
         return undefined
     }
 }
 
+let tmpCounter = 0
 async function saveSnapshot(roomId, snapshot) {
     await mkdir(DIR, { recursive: true })
     // Atomic write: a process kill between writeFile and full sync would
     // otherwise leave a truncated file, which JSON.parse rejects on the
-    // next load — silently losing the whole room. POSIX rename is atomic.
+    // next load. POSIX rename is atomic. The unique tmp name keeps two
+    // writers (should one ever overlap) from interleaving into one file.
     const finalPath = join(DIR, roomId)
-    const tmpPath = `${finalPath}.tmp`
-    await writeFile(tmpPath, JSON.stringify(snapshot))
-    await rename(tmpPath, finalPath)
+    const tmpPath = `${finalPath}.tmp-${process.pid}-${++tmpCounter}`
+    try {
+        await writeFile(tmpPath, JSON.stringify(snapshot))
+        await rename(tmpPath, finalPath)
+    } catch (err) {
+        await unlink(tmpPath).catch(() => {})
+        throw err
+    }
 }
 
 async function makeOrLoadRoom(roomId) {
@@ -188,17 +391,31 @@ async function makeOrLoadRoom(roomId) {
         console.log(`Initial snapshot for room ${roomId}:`, initialSnapshot ? 'found' : 'not found')
 
         let saveTimeout = null
-        const state = { needsPersist: false, id: roomId, room: null }
+        const state = { needsPersist: false, id: roomId, room: null, lastPersistError: null }
 
-        const persistData = async () => {
-            if (!state.needsPersist) return
-            state.needsPersist = false
-            try {
-                const snapshot = state.room.getCurrentSnapshot()
-                await saveSnapshot(roomId, snapshot)
-            } catch (error) {
-                console.error(`Failed to save snapshot for room ${roomId}:`, error)
-            }
+        // Persists are serialised per room through a promise chain, so the
+        // debounce timer, the 5 s heartbeat and shutdown can never race two
+        // writes of the same room (an older snapshot landing last). The chain
+        // never rejects; failures re-arm needsPersist so the heartbeat retries.
+        let persistChain = Promise.resolve()
+        const persistData = () => {
+            persistChain = persistChain.then(async () => {
+                if (!state.needsPersist) return
+                state.needsPersist = false
+                try {
+                    const snapshot = state.room.getCurrentSnapshot()
+                    await saveSnapshot(roomId, snapshot)
+                } catch (error) {
+                    state.needsPersist = true
+                    state.lastPersistError = lastPersistError = {
+                        time: new Date().toISOString(),
+                        room: roomId,
+                        message: error?.message || String(error),
+                    }
+                    console.error(`Failed to save snapshot for room ${roomId}:`, error)
+                }
+            })
+            return persistChain
         }
 
         state.room = new TLSocketRoom({
@@ -227,11 +444,12 @@ async function makeOrLoadRoom(roomId) {
             if (state.room.isClosed()) {
                 console.log(`Room ${roomId} is closed, cleaning up`)
                 clearInterval(state.persistInterval)
-                if (saveTimeout) {
-                    clearTimeout(saveTimeout)
-                    // Final flush guarantees data committed before the
-                    // map entry is dropped.
-                    await persistData()
+                if (saveTimeout) clearTimeout(saveTimeout)
+                // Final flush guarantees data committed before the map entry
+                // is dropped (no-op when nothing is pending).
+                await persistData()
+                if (state.needsPersist) {
+                    console.error(`Room ${roomId} closed with unsaved changes: final persist failed`)
                 }
                 // Only remove our own entry: a room re-created in the 5 s
                 // window would otherwise be dropped from the map while live.
@@ -256,10 +474,40 @@ async function makeOrLoadRoom(roomId) {
     }
 }
 
-// Asset storage
-async function storeAsset(id, buffer) {
+// Asset storage. Uploads are same-origin with the hub, so serving an
+// attacker-chosen body with a sniffable type would be stored XSS. We accept
+// only image/video formats identified by magic bytes, remember the detected
+// type in a `<id>.meta.json` sidecar, and serve with nosniff + a sandbox CSP.
+const META_SUFFIX = '.meta.json'
+const isMetaFile = (name) => name.endsWith(META_SUFFIX)
+
+function sniffContentType(buf) {
+    const ascii = (start, end) => buf.subarray(start, end).toString('latin1')
+    if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png'
+    if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg'
+    if (buf.length >= 6 && (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a')) return 'image/gif'
+    if (buf.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp'
+    if (buf.length >= 4 && buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return 'video/webm'
+    if (buf.length >= 12 && ascii(4, 8) === 'ftyp') {
+        const brand = ascii(8, 12)
+        if (brand === 'avif' || brand === 'avis') return 'image/avif'
+        if (brand === 'qt  ') return 'video/quicktime'
+        return 'video/mp4'
+    }
+    // SVG: text starting (after optional BOM/whitespace) with <svg or <?xml;
+    // an XML prolog must be followed by an <svg root somewhere in the head.
+    let head = buf.subarray(0, 64 * 1024).toString('utf8')
+    if (head.charCodeAt(0) === 0xfeff) head = head.slice(1)
+    head = head.trimStart()
+    if (/^<svg[\s>]/i.test(head)) return 'image/svg+xml'
+    if (head.startsWith('<?xml') && /<svg[\s>]/i.test(head)) return 'image/svg+xml'
+    return null
+}
+
+async function storeAsset(id, buffer, contentType) {
     await mkdir(ASSETS_DIR, { recursive: true })
     await writeFile(join(ASSETS_DIR, id), buffer)
+    await writeFile(join(ASSETS_DIR, id + META_SUFFIX), JSON.stringify({ contentType }))
 }
 
 async function loadAsset(id) {
@@ -270,10 +518,25 @@ async function loadAsset(id) {
     }
 }
 
-// URL unfurling
-async function unfurl(url) {
+// Sidecar first; assets uploaded before sidecars existed are sniffed.
+async function assetContentType(id, data) {
     try {
-        const { title, description, open_graph, twitter_card, favicon } = await _unfurl.unfurl(url)
+        const meta = JSON.parse(await readFile(join(ASSETS_DIR, id + META_SUFFIX), 'utf8'))
+        if (typeof meta.contentType === 'string' && /^(image|video)\//.test(meta.contentType)) return meta.contentType
+    } catch { /* no/invalid sidecar */ }
+    return sniffContentType(data) || 'application/octet-stream'
+}
+
+// URL unfurling. All network access goes through safeFetch (SSRF guard,
+// manual redirects, 1 MB cap); one 5 s deadline covers every hop.
+async function unfurl(url) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), UNFURL_TIMEOUT_MS)
+    try {
+        const { title, description, open_graph, twitter_card, favicon } = await _unfurl.unfurl(url, {
+            oembed: false,
+            fetch: (u) => safeFetch(u, controller.signal),
+        })
         const image = open_graph?.images?.[0]?.url || twitter_card?.images?.[0]?.url
 
         return {
@@ -283,13 +546,15 @@ async function unfurl(url) {
             favicon: favicon || '',
         }
     } catch (error) {
-        console.error('Unfurl error:', error)
+        console.error('Unfurl error:', error?.message || error)
         return {
             title: '',
             description: '',
             image: '',
             favicon: '',
         }
+    } finally {
+        clearTimeout(timer)
     }
 }
 
@@ -312,7 +577,7 @@ async function getRoomStatistics() {
             const roomFiles = await readdir(DIR)
             
             for (const file of roomFiles) {
-                if (!file.startsWith('.')) {
+                if (isRoomFile(file)) {
                     const filePath = join(DIR, file)
                     const stat_result = await stat(filePath)
                     const roomName = file
@@ -360,9 +625,10 @@ async function getAssetStatistics() {
             const assetFiles = await readdir(ASSETS_DIR)
             
             for (const file of assetFiles) {
+                if (isMetaFile(file)) continue
                 const filePath = join(ASSETS_DIR, file)
                 const stat_result = await stat(filePath)
-                
+
                 stats.assets.push({
                     name: file,
                     size: stat_result.size,
@@ -412,6 +678,10 @@ async function getSystemStatistics() {
     }
 }
 
+function persistErrorIsRecent() {
+    return !!lastPersistError && Date.now() - Date.parse(lastPersistError.time) < PERSIST_ERROR_WINDOW_MS
+}
+
 async function getHealthStatus() {
     try {
         const health = {
@@ -456,6 +726,11 @@ async function getHealthStatus() {
             health.status = 'unhealthy'
         }
 
+        health.checks.persistence = lastPersistError
+            ? { status: persistErrorIsRecent() ? 'error' : 'warning', lastPersistError }
+            : { status: 'healthy', lastPersistError: null }
+        if (persistErrorIsRecent()) health.status = 'unhealthy'
+
         return health
     } catch (error) {
         console.error('Error getting health status:', error)
@@ -483,7 +758,7 @@ const server = createServer(async (req, res) => {
     // Asset upload — size-limited, ID-validated, error-trapped.
     if (req.method === 'PUT' && url.pathname.startsWith('/uploads/')) {
         const id = safeDecode(url.pathname.slice('/uploads/'.length))
-        if (!isSafeId(id)) {
+        if (!isSafeId(id) || isMetaFile(id)) {
             res.writeHead(400); res.end('Invalid asset id'); return
         }
         const chunks = []
@@ -502,8 +777,15 @@ const server = createServer(async (req, res) => {
         })
         req.on('end', async () => {
             if (aborted) return
+            const body = Buffer.concat(chunks)
+            const contentType = sniffContentType(body)
+            if (!contentType) {
+                res.writeHead(415, { 'Content-Type': 'text/plain' })
+                res.end('Unsupported media type: only PNG, JPEG, GIF, WebP, AVIF, SVG, MP4, WebM and QuickTime are accepted')
+                return
+            }
             try {
-                await storeAsset(id, Buffer.concat(chunks))
+                await storeAsset(id, body, contentType)
                 res.writeHead(200, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ ok: true }))
             } catch (err) {
@@ -519,26 +801,38 @@ const server = createServer(async (req, res) => {
     // Asset download.
     if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
         const id = safeDecode(url.pathname.slice('/uploads/'.length))
-        if (!isSafeId(id)) {
+        if (!isSafeId(id) || isMetaFile(id)) {
             res.writeHead(400); res.end('Invalid asset id'); return
         }
         const data = await loadAsset(id)
         if (data) {
-            res.writeHead(200); res.end(data)
+            const contentType = await assetContentType(id, data)
+            res.writeHead(200, {
+                'Content-Type': contentType,
+                'X-Content-Type-Options': 'nosniff',
+                // SVG stays inline so tldraw can render it; the sandbox CSP
+                // stops scripts in it if someone opens the URL directly.
+                'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                'Cache-Control': 'private, max-age=86400',
+                'Content-Disposition': contentType === 'application/octet-stream' ? 'attachment' : 'inline',
+            })
+            res.end(data)
         } else {
             res.writeHead(404); res.end('Not found')
         }
         return
     }
 
-    // Asset delete (called by client TLAssetStore.remove on shape deletion).
+    // Asset delete. The v1.11 client no longer calls this (unreferenced
+    // assets are garbage-collected server-side); kept for older clients.
     // Idempotent — missing file is fine.
     if (req.method === 'DELETE' && url.pathname.startsWith('/uploads/')) {
         const id = safeDecode(url.pathname.slice('/uploads/'.length))
-        if (!isSafeId(id)) {
+        if (!isSafeId(id) || isMetaFile(id)) {
             res.writeHead(400); res.end('Invalid asset id'); return
         }
         try {
+            await unlink(join(ASSETS_DIR, id + META_SUFFIX)).catch(() => {})
             await unlink(join(ASSETS_DIR, id))
             res.writeHead(204); res.end()
         } catch (err) {
@@ -558,8 +852,13 @@ const server = createServer(async (req, res) => {
         if (!targetUrl) {
             res.writeHead(400); res.end('Missing url parameter'); return
         }
-        if (!isPublicUrl(targetUrl)) {
-            res.writeHead(400); res.end('URL must point to a public http(s) host'); return
+        try {
+            await resolvePublicUrl(targetUrl)
+        } catch (err) {
+            // Unresolvable hosts fall through to the usual empty 200 result.
+            if (err.code === 'NOT_PUBLIC') {
+                res.writeHead(400); res.end('URL must point to a public http(s) host'); return
+            }
         }
         const result = await unfurl(targetUrl)
         res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -596,8 +895,14 @@ const server = createServer(async (req, res) => {
         return
     }
 
-    // Health check
+    // Health check (Docker healthcheck). 503 while a snapshot write has
+    // failed within the last 10 minutes — edits are not reaching disk.
     if (req.method === 'GET' && url.pathname === '/health') {
+        if (persistErrorIsRecent()) {
+            res.writeHead(503, { 'Content-Type': 'text/plain' })
+            res.end(`PERSIST ERROR ${lastPersistError.time} room=${lastPersistError.room}: ${lastPersistError.message}`)
+            return
+        }
         res.writeHead(200, { 'Content-Type': 'text/plain' })
         res.end('OK')
         return
@@ -627,7 +932,8 @@ wss.on('connection', async (ws, req) => {
 
     // Reject path-traversal attempts (e.g. /connect/../../server.js) and
     // empty / overly-long roomIds. Same charset rule as asset IDs.
-    if (!isSafeId(roomId)) {
+    // Temp/quarantine file names are reserved.
+    if (!isSafeId(roomId) || isTmpFile(roomId) || isCorruptFile(roomId)) {
         console.log(`Closing connection: invalid room id "${roomId}"`)
         ws.close(1008, 'Invalid room id')
         return
@@ -671,9 +977,15 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`WebSocket endpoint: ws://localhost:${PORT}/connect/<roomId>`)
     console.log(`HTTP endpoints: http://localhost:${PORT}/uploads/, /unfurl, /health`)
 
+    const DAY = 24 * 60 * 60 * 1000
+    console.log('Effective CLEANUP_CONFIG:', JSON.stringify({
+        ...CLEANUP_CONFIG,
+        roomRetentionDays: CLEANUP_CONFIG.ROOM_RETENTION_PERIOD / DAY,
+        assetRetentionDays: CLEANUP_CONFIG.ASSET_RETENTION_PERIOD / DAY,
+        cleanupIntervalHours: CLEANUP_CONFIG.CLEANUP_INTERVAL / (60 * 60 * 1000),
+    }))
     if (CLEANUP_CONFIG.CLEANUP_ENABLED) {
-        console.log(`Storage cleanup enabled: rooms after ${process.env.ROOM_RETENTION_DAYS || '7'} days, assets after ${process.env.ASSET_RETENTION_DAYS || '30'} days`)
-        console.log(`Cleanup will run every ${process.env.CLEANUP_INTERVAL_HOURS || '6'} hours`)
+        console.log(`Storage cleanup enabled: rooms after ${CLEANUP_CONFIG.ROOM_RETENTION_PERIOD / DAY} days (unless loaded), unreferenced assets after ${CLEANUP_CONFIG.ASSET_RETENTION_PERIOD / DAY} days`)
         setTimeout(performCleanup, 30000)
         setInterval(performCleanup, CLEANUP_CONFIG.CLEANUP_INTERVAL)
     } else {
